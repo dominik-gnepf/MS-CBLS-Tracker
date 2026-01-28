@@ -15,7 +15,14 @@ import {
   searchProducts,
   startBatch,
   endBatch,
+  deleteAllData,
+  getMsfConfig,
+  getAllMsfConfigs,
+  upsertMsfConfig,
+  deleteMsfConfig,
+  getProductsWithConfig,
   Product,
+  MsfConfig,
   loadSettings,
   saveSettings,
   AppSettings,
@@ -225,6 +232,66 @@ export function setupIpcHandlers() {
     } catch (error) {
       console.error('Error updating item group:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Delete all data from the database
+  ipcMain.handle('delete-all-data', async () => {
+    try {
+      const result = deleteAllData();
+      console.log(`Deleted all data: ${result.productsDeleted} products, ${result.inventoryDeleted} inventory records, ${result.importsDeleted} import records`);
+      return { success: true, ...result };
+    } catch (error) {
+      console.error('Error deleting all data:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // MSF Config handlers
+  ipcMain.handle('get-msf-config', async (event, msf: string) => {
+    try {
+      return getMsfConfig(msf) || null;
+    } catch (error) {
+      console.error('Error getting MSF config:', error);
+      return null;
+    }
+  });
+
+  ipcMain.handle('get-all-msf-configs', async () => {
+    try {
+      return getAllMsfConfigs();
+    } catch (error) {
+      console.error('Error getting all MSF configs:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('save-msf-config', async (event, config: Partial<MsfConfig>) => {
+    try {
+      upsertMsfConfig(config);
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving MSF config:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('delete-msf-config', async (event, msf: string) => {
+    try {
+      deleteMsfConfig(msf);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting MSF config:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('get-products-with-config', async () => {
+    try {
+      return getProductsWithConfig();
+    } catch (error) {
+      console.error('Error getting products with config:', error);
+      return [];
     }
   });
 }

@@ -55,6 +55,17 @@ export interface AppSettings {
   categories: CategoryConfig[];
 }
 
+export interface MsfConfig {
+  msf: string;
+  short_name: string | null;
+  category_override: string | null;
+  notes: string | null;
+  hidden: number;
+  custom_order: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const electronAPI = {
   selectCsvFile: (): Promise<string | null> =>
     ipcRenderer.invoke('select-csv-file'),
@@ -91,6 +102,25 @@ const electronAPI = {
 
   updateProductItemGroup: (msf: string, itemGroup: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('update-product-item-group', msf, itemGroup),
+
+  deleteAllData: (): Promise<{ success: boolean; productsDeleted?: number; inventoryDeleted?: number; importsDeleted?: number; error?: string }> =>
+    ipcRenderer.invoke('delete-all-data'),
+
+  // MSF Config APIs
+  getMsfConfig: (msf: string): Promise<MsfConfig | null> =>
+    ipcRenderer.invoke('get-msf-config', msf),
+
+  getAllMsfConfigs: (): Promise<MsfConfig[]> =>
+    ipcRenderer.invoke('get-all-msf-configs'),
+
+  saveMsfConfig: (config: Partial<MsfConfig>): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('save-msf-config', config),
+
+  deleteMsfConfig: (msf: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('delete-msf-config', msf),
+
+  getProductsWithConfig: (): Promise<Array<Product & { config: MsfConfig | null }>> =>
+    ipcRenderer.invoke('get-products-with-config'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

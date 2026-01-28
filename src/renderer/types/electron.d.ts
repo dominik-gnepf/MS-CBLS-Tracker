@@ -1,6 +1,6 @@
-import { AppSettings, CategoryConfig } from '../preload/preload';
+import { AppSettings, CategoryConfig, MsfConfig } from '../preload/preload';
 
-export type { AppSettings, CategoryConfig };
+export type { AppSettings, CategoryConfig, MsfConfig };
 
 // Re-export types from preload
 declare global {
@@ -24,6 +24,13 @@ declare global {
       getSettings: () => Promise<AppSettings | null>;
       saveSettings: (settings: AppSettings) => Promise<{ success: boolean; error?: string }>;
       updateProductItemGroup: (msf: string, itemGroup: string) => Promise<{ success: boolean; error?: string }>;
+      deleteAllData: () => Promise<{ success: boolean; productsDeleted?: number; inventoryDeleted?: number; importsDeleted?: number; error?: string }>;
+      // MSF Config APIs
+      getMsfConfig: (msf: string) => Promise<MsfConfig | null>;
+      getAllMsfConfigs: () => Promise<MsfConfig[]>;
+      saveMsfConfig: (config: Partial<MsfConfig>) => Promise<{ success: boolean; error?: string }>;
+      deleteMsfConfig: (msf: string) => Promise<{ success: boolean; error?: string }>;
+      getProductsWithConfig: () => Promise<Array<any & { config: MsfConfig | null }>>;
     };
   }
 }

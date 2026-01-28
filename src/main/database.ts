@@ -154,6 +154,20 @@ export async function initDatabase(): Promise<void> {
   db.run('CREATE INDEX IF NOT EXISTS idx_products_cable_type ON products(cable_type)');
   db.run('CREATE INDEX IF NOT EXISTS idx_inventory_msf ON inventory(msf)');
 
+  // MSF Configuration table for manual overrides
+  db.run(`
+    CREATE TABLE IF NOT EXISTS msf_config (
+      msf TEXT PRIMARY KEY,
+      short_name TEXT,
+      category_override TEXT,
+      notes TEXT,
+      hidden INTEGER DEFAULT 0,
+      custom_order INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Save to disk
   saveDatabase();
 }
@@ -403,4 +417,148 @@ export function searchProducts(query: string): Array<Product & { quantity: numbe
     WHERE p.msf LIKE ? OR p.item_name LIKE ? OR p.category LIKE ?
     ORDER BY p.category, p.cable_length_value
   `, [searchTerm, searchTerm, searchTerm]);
+}
+
+// Delete all data from the database
+export function deleteAllData(): { productsDeleted: number; inventoryDeleted: number; importsDeleted: number } {
+  const productCount = queryOne<{ count: number }>('SELECT COUNT(*) as count FROM products');
+  const inventoryCount = queryOne<{ count: number }>('SELECT COUNT(*) as count FROM inventory');
+  const importCount = queryOne<{ count: number }>('SELECT COUNT(*) as count FROM import_history');
+
+  run('DELETE FROM inventory');
+  run('DELETE FROM import_history');
+  run('DELETE FROM products');
+
+  return {
+    productsDeleted: productCount?.count || 0,
+    inventoryDeleted: inventoryCount?.count || 0,
+    importsDeleted: importCount?.count || 0,
+  };
+}
+
+// MSF Configuration types and operations
+export interface MsfConfig {
+  msf: string;
+  short_name: string | null;
+  category_override: string | null;
+  notes: string | null;
+  hidden: number;
+  custom_order: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getMsfConfig(msf: string): MsfConfig | undefined {
+  return queryOne<MsfConfig>('SELECT * FROM msf_config WHERE msf = ?', [msf]);
+}
+
+export function getAllMsfConfigs(): MsfConfig[] {
+  return queryAll<MsfConfig>('SELECT * FROM msf_config ORDER BY msf');
+}
+
+export function upsertMsfConfig(config: Partial<MsfConfig>): void {
+  const existing = getMsfConfig(config.msf!);
+
+  if (existing) {
+    run(`
+      UPDATE msf_config SET
+        short_name = ?,
+        category_override = ?,
+        notes = ?,
+        hidden = ?,
+        custom_order = ?,
+        updated_at = datetime('now')
+      WHERE msf = ?
+    `, [
+      config.short_name ?? existing.short_name,
+      config.category_override ?? existing.category_override,
+      config.notes ?? existing.notes,
+      config.hidden ?? existing.hidden,
+      config.custom_order ?? existing.custom_order,
+      config.msf,
+    ]);
+  } else {
+    run(`
+      INSERT INTO msf_config (msf, short_name, category_override, notes, hidden, custom_order)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      config.msf,
+      config.short_name || null,
+      config.category_override || null,
+      config.notes || null,
+      config.hidden || 0,
+      config.custom_order || null,
+    ]);
+  }
+}
+
+export function deleteMsfConfig(msf: string): void {
+  run('DELETE FROM msf_config WHERE msf = ?', [msf]);
+}
+
+// Raw row type from the SQL query with joined config columns
+interface ProductWithConfigRow extends Product {
+  quantity: number;
+  config_short_name: string | null;
+  config_category_override: string | null;
+  config_notes: string | null;
+  config_hidden: number | null;
+  config_custom_order: number | null;
+}
+
+// Get all products with their config overrides applied
+export function getProductsWithConfig(): Array<Product & { quantity: number; config: MsfConfig | null }> {
+  const rows = queryAll<ProductWithConfigRow>(`
+    SELECT 
+      p.*,
+      COALESCE(
+        (SELECT quantity FROM inventory WHERE msf = p.msf ORDER BY import_date DESC LIMIT 1),
+        0
+      ) as quantity,
+      c.short_name as config_short_name,
+      c.category_override as config_category_override,
+      c.notes as config_notes,
+      c.hidden as config_hidden,
+      c.custom_order as config_custom_order
+    FROM products p
+    LEFT JOIN msf_config c ON p.msf = c.msf
+    ORDER BY p.category, p.cable_length_value
+  `);
+
+  return rows.map(row => {
+    const hasConfig = row.config_short_name !== null || 
+                      row.config_category_override !== null || 
+                      row.config_notes !== null ||
+                      row.config_hidden !== null ||
+                      row.config_custom_order !== null;
+
+    return {
+      msf: row.msf,
+      item_name: row.item_name,
+      item_group: row.item_group,
+      category: row.category,
+      cable_type: row.cable_type,
+      cable_length: row.cable_length,
+      cable_length_value: row.cable_length_value,
+      cable_length_unit: row.cable_length_unit,
+      speed: row.speed,
+      connector_type: row.connector_type,
+      location: row.location,
+      datacenter: row.datacenter,
+      metadata: row.metadata,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      quantity: row.quantity,
+      config: hasConfig ? {
+        msf: row.msf,
+        short_name: row.config_short_name,
+        category_override: row.config_category_override,
+        notes: row.config_notes,
+        hidden: row.config_hidden || 0,
+        custom_order: row.config_custom_order,
+        created_at: '',
+        updated_at: '',
+      } : null,
+    };
+  });
 }

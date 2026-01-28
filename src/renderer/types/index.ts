@@ -84,6 +84,18 @@ export const CATEGORY_COLORS: Record<string, string> = {
 
 export const LOW_STOCK_THRESHOLD = 20;
 
+// MSF Configuration type for manual overrides
+export interface MsfConfig {
+  msf: string;
+  short_name: string | null;
+  category_override: string | null;
+  notes: string | null;
+  hidden: number;
+  custom_order: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Settings types
 export interface AppSettings {
   lowStockThreshold: number;      // Yellow warning threshold
