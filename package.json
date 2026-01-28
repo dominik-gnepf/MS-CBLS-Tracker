@@ -1,6 +1,6 @@
 {
   "name": "ms-cable-tracker",
-  "version": "0.5.1",
+  "version": "1.0.0",
   "description": "Cable Inventory Management Application",
   "main": "dist/main/main.js",
   "type": "commonjs",
@@ -29,6 +29,7 @@
     "concurrently": "^9.1.2",
     "electron": "^33.3.1",
     "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
@@ -38,6 +39,8 @@
   "build": {
     "appId": "com.mscabletracker.app",
     "productName": "MS Cable Tracker",
+    "copyright": "Copyright © 2026 Dominik Gnepf",
+    "icon": "assets/icon.ico",
     "directories": {
       "output": "release"
     },
@@ -59,7 +62,23 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MS Cable Tracker"
     }
   }
 }
