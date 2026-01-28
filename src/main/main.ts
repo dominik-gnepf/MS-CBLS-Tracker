@@ -5,7 +5,8 @@ import { setupIpcHandlers } from './ipcHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 
-const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
+// Use app.isPackaged as the primary check - it's the most reliable
+const isDev = !app.isPackaged;
 
 function createWindow() {
   mainWindow = new BrowserWindow({

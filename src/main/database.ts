@@ -8,7 +8,7 @@ let dbPath: string = '';
 
 // Get the path to the sql.js WASM file
 function getWasmPath(): string {
-  const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
+  const isDev = !app.isPackaged;
 
   if (isDev) {
     // In development, use the WASM file from node_modules
