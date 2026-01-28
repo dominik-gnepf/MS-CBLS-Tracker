@@ -16,6 +16,9 @@ import {
   startBatch,
   endBatch,
   Product,
+  loadSettings,
+  saveSettings,
+  AppSettings,
 } from './database';
 import { parseCSV, generateSimpleDescription, ParsedCable } from './csvParser';
 
@@ -187,18 +190,41 @@ export function setupIpcHandlers() {
 
   // Get available categories
   ipcMain.handle('get-categories', async () => {
-    return [
-      '400G AOC',
-      '400G PSM',
-      '100G AOC',
-      '100G PSM4',
-      'SMLC',
-      'Copper',
-      '200G Y AOC',
-      'MTP Fiber',
-      'Fiber Jumpers',
-      'Transceiver',
-      'Other',
-    ];
+    const settings = loadSettings();
+    return settings.categories
+      .sort((a, b) => a.order - b.order)
+      .map(c => c.name);
+  });
+
+  // Get settings
+  ipcMain.handle('get-settings', async () => {
+    try {
+      return loadSettings();
+    } catch (error) {
+      console.error('Error getting settings:', error);
+      return null;
+    }
+  });
+
+  // Save settings
+  ipcMain.handle('save-settings', async (event, settings: AppSettings) => {
+    try {
+      saveSettings(settings);
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Update product item group
+  ipcMain.handle('update-product-item-group', async (event, msf: string, itemGroup: string) => {
+    try {
+      updateProductCategory(msf, itemGroup);
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating item group:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   });
 }

@@ -1,19 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Product, CATEGORY_ORDER, LOW_STOCK_THRESHOLD } from './types';
+import { useState, useEffect, useCallback } from 'react';
+import { Product } from './types';
 import FileUpload from './components/FileUpload';
 import Overview from './components/Overview';
 import FilterBar from './components/FilterBar';
 import DetailModal from './components/DetailModal';
 import ImportResultModal from './components/ImportResultModal';
+import SettingsModal from './components/SettingsModal';
+import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 
-function App() {
+// App version - automatically injected from package.json at build time
+declare const __APP_VERSION__: string;
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
+
+function AppContent() {
+  const { settings, updateSettings, getCategoryOrder } = useSettings();
   const [inventory, setInventory] = useState<Record<string, Product[]>>({});
   const [filteredInventory, setFilteredInventory] = useState<Record<string, Product[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
-  const [visibleCategories, setVisibleCategories] = useState<Set<string>>(new Set(CATEGORY_ORDER));
+  const [visibleCategories, setVisibleCategories] = useState<Set<string>>(new Set(getCategoryOrder()));
+  const [showSettings, setShowSettings] = useState(false);
   const [importResult, setImportResult] = useState<{
     success: boolean;
     recordsProcessed?: number;
@@ -61,7 +69,7 @@ function App() {
 
       // Low stock filter
       if (showLowStockOnly) {
-        filteredProducts = filteredProducts.filter((p) => p.quantity < LOW_STOCK_THRESHOLD);
+        filteredProducts = filteredProducts.filter((p) => p.quantity < settings.lowStockThreshold);
       }
 
       if (filteredProducts.length > 0) {
@@ -70,7 +78,7 @@ function App() {
     }
 
     setFilteredInventory(filtered);
-  }, [inventory, searchQuery, showLowStockOnly, visibleCategories]);
+  }, [inventory, searchQuery, showLowStockOnly, visibleCategories, settings.lowStockThreshold]);
 
   const handleImport = async () => {
     try {
@@ -115,7 +123,7 @@ function App() {
   const totalProducts = Object.values(inventory).flat().length;
   const lowStockCount = Object.values(inventory)
     .flat()
-    .filter((p) => p.quantity < LOW_STOCK_THRESHOLD).length;
+    .filter((p) => p.quantity < settings.lowStockThreshold).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -124,12 +132,27 @@ function App() {
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h1 className="text-xl font-bold text-gray-800">MS Cable Tracker</h1>
+              <div>
+                <h1 className="text-xl font-bold text-gray-800">MS Cable Tracker</h1>
+                <p className="text-xs text-gray-400">v{APP_VERSION}</p>
+              </div>
               <div className="text-sm text-gray-500">
                 {totalProducts} products | {lowStockCount} low stock
               </div>
             </div>
-            <FileUpload onImport={handleImport} isLoading={isLoading} />
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Settings"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+              <FileUpload onImport={handleImport} isLoading={isLoading} />
+            </div>
           </div>
         </div>
       </header>
@@ -182,6 +205,7 @@ function App() {
         <DetailModal
           product={selectedProduct}
           onClose={() => setSelectedProduct(null)}
+          onProductUpdated={loadInventory}
         />
       )}
 
@@ -192,7 +216,23 @@ function App() {
           onClose={() => setImportResult(null)}
         />
       )}
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        settings={settings}
+        onSave={updateSettings}
+      />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <SettingsProvider>
+      <AppContent />
+    </SettingsProvider>
   );
 }
 

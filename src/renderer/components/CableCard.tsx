@@ -1,5 +1,6 @@
 import React from 'react';
-import { Product, LOW_STOCK_THRESHOLD } from '../types';
+import { Product } from '../types';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface CableCardProps {
   product: Product;
@@ -7,8 +8,10 @@ interface CableCardProps {
 }
 
 const CableCard: React.FC<CableCardProps> = ({ product, onClick }) => {
-  const isLowStock = product.quantity < LOW_STOCK_THRESHOLD;
-  const isCriticalStock = product.quantity < 10;
+  const { settings } = useSettings();
+  
+  const isLowStock = product.quantity < settings.lowStockThreshold;
+  const isCriticalStock = product.quantity < settings.criticalStockThreshold;
 
   // Generate short description
   const shortDesc = getShortDescription(product);

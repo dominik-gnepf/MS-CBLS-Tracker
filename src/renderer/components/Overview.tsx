@@ -1,6 +1,7 @@
 import React from 'react';
-import { Product, CATEGORY_ORDER, CATEGORY_COLORS } from '../types';
+import { Product } from '../types';
 import CableCard from './CableCard';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface OverviewProps {
   inventory: Record<string, Product[]>;
@@ -8,10 +9,13 @@ interface OverviewProps {
 }
 
 const Overview: React.FC<OverviewProps> = ({ inventory, onProductClick }) => {
-  // Sort categories by predefined order
+  const { settings, getCategoryColor, getCategoryOrder } = useSettings();
+  const categoryOrder = getCategoryOrder();
+
+  // Sort categories by settings order
   const sortedCategories = Object.keys(inventory).sort((a, b) => {
-    const indexA = CATEGORY_ORDER.indexOf(a as any);
-    const indexB = CATEGORY_ORDER.indexOf(b as any);
+    const indexA = categoryOrder.indexOf(a);
+    const indexB = categoryOrder.indexOf(b);
     if (indexA === -1 && indexB === -1) return a.localeCompare(b);
     if (indexA === -1) return 1;
     if (indexB === -1) return -1;
@@ -22,7 +26,7 @@ const Overview: React.FC<OverviewProps> = ({ inventory, onProductClick }) => {
     <div className="flex gap-4 overflow-x-auto pb-4">
       {sortedCategories.map((category) => {
         const products = inventory[category] || [];
-        const colorClass = CATEGORY_COLORS[category] || CATEGORY_COLORS['Other'];
+        const colorClass = getCategoryColor(category);
 
         // Sort products by length value
         const sortedProducts = [...products].sort((a, b) => {

@@ -1,14 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { Product, Inventory, LOW_STOCK_THRESHOLD } from '../types';
+import { Product, Inventory } from '../types';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface DetailModalProps {
   product: Product;
   onClose: () => void;
+  onProductUpdated?: () => void;
 }
 
-const DetailModal: React.FC<DetailModalProps> = ({ product, onClose }) => {
+const DetailModal: React.FC<DetailModalProps> = ({ product, onClose, onProductUpdated }) => {
+  const { settings } = useSettings();
   const [history, setHistory] = useState<Inventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState(product.category || '');
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+
+  const isLowStock = product.quantity < settings.lowStockThreshold;
+  const isCriticalStock = product.quantity < settings.criticalStockThreshold;
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -26,8 +34,26 @@ const DetailModal: React.FC<DetailModalProps> = ({ product, onClose }) => {
     loadHistory();
   }, [product.msf]);
 
-  const isLowStock = product.quantity < LOW_STOCK_THRESHOLD;
-  const isCriticalStock = product.quantity < 10;
+  const handleCategoryChange = async (newCategory: string) => {
+    setSelectedCategory(newCategory);
+    setIsSavingCategory(true);
+    try {
+      const result = await window.electronAPI.updateProductCategory(product.msf, newCategory);
+      if (result.success) {
+        if (onProductUpdated) {
+          onProductUpdated();
+        }
+      } else {
+        console.error('Failed to update category:', result.error);
+        setSelectedCategory(product.category || '');
+      }
+    } catch (error) {
+      console.error('Error updating category:', error);
+      setSelectedCategory(product.category || '');
+    } finally {
+      setIsSavingCategory(false);
+    }
+  };
 
   return (
     <div
@@ -95,7 +121,39 @@ const DetailModal: React.FC<DetailModalProps> = ({ product, onClose }) => {
             <DetailField label="Cable Length" value={product.cable_length} />
             <DetailField label="Speed" value={product.speed} />
             <DetailField label="Connector" value={product.connector_type} />
-            <DetailField label="Item Group" value={product.item_group} />
+            
+            {/* Editable Item Group / Category */}
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Item Group / Category</p>
+              <div className="relative">
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
+                  disabled={isSavingCategory}
+                  className={`
+                    w-full px-3 py-1.5 text-sm border rounded-lg
+                    focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                    ${isSavingCategory ? 'bg-gray-100 cursor-wait' : 'bg-white cursor-pointer'}
+                  `}
+                >
+                  <option value="">Uncategorized</option>
+                  {settings.categories.map((cat) => (
+                    <option key={cat.name} value={cat.name}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+                {isSavingCategory && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <svg className="animate-spin h-4 w-4 text-blue-500" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <DetailField label="Location" value={product.location} />
             <DetailField label="Datacenter" value={product.datacenter} />
           </div>

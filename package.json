@@ -1,6 +1,6 @@
 {
   "name": "ms-cable-tracker",
-  "version": "1.0.0",
+  "version": "0.5.1",
   "description": "Cable Inventory Management Application",
   "main": "dist/main/main.js",
   "type": "commonjs",

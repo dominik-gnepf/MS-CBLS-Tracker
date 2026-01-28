@@ -6,6 +6,62 @@ import fs from 'fs';
 let db: SqlJsDatabase | null = null;
 let dbPath: string = '';
 
+// Settings file path
+function getSettingsPath(): string {
+  const userDataPath = app.getPath('userData');
+  return path.join(userDataPath, 'settings.json');
+}
+
+// Default settings
+const DEFAULT_SETTINGS = {
+  lowStockThreshold: 20,
+  criticalStockThreshold: 10,
+  categories: [
+    { name: '400G AOC', color: 'blue', order: 0 },
+    { name: '400G PSM', color: 'purple', order: 1 },
+    { name: '100G AOC', color: 'green', order: 2 },
+    { name: '100G PSM4', color: 'teal', order: 3 },
+    { name: 'SMLC', color: 'yellow', order: 4 },
+    { name: 'Copper', color: 'orange', order: 5 },
+    { name: '200G Y AOC', color: 'pink', order: 6 },
+    { name: 'MTP Fiber', color: 'indigo', order: 7 },
+    { name: 'Fiber Jumpers', color: 'cyan', order: 8 },
+    { name: 'Transceiver', color: 'red', order: 9 },
+    { name: 'Other', color: 'gray', order: 10 },
+  ],
+};
+
+export interface AppSettings {
+  lowStockThreshold: number;
+  criticalStockThreshold: number;
+  categories: Array<{ name: string; color: string; order: number }>;
+}
+
+export function loadSettings(): AppSettings {
+  const settingsPath = getSettingsPath();
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const data = fs.readFileSync(settingsPath, 'utf-8');
+      const settings = JSON.parse(data);
+      // Merge with defaults to ensure all properties exist
+      return { ...DEFAULT_SETTINGS, ...settings };
+    }
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
+  return { ...DEFAULT_SETTINGS };
+}
+
+export function saveSettings(settings: AppSettings): void {
+  const settingsPath = getSettingsPath();
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('Error saving settings:', error);
+    throw error;
+  }
+}
+
 // Get the path to the sql.js WASM file
 function getWasmPath(): string {
   const isDev = !app.isPackaged;

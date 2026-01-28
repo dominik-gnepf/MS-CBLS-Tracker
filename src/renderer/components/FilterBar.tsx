@@ -1,5 +1,5 @@
 import React from 'react';
-import { CATEGORY_ORDER } from '../types';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface FilterBarProps {
   searchQuery: string;
@@ -20,10 +20,13 @@ const FilterBar: React.FC<FilterBarProps> = ({
   onToggleCategory,
   categories,
 }) => {
-  // Sort categories by predefined order
+  const { getCategoryOrder } = useSettings();
+  const categoryOrder = getCategoryOrder();
+
+  // Sort categories by settings order
   const sortedCategories = [...categories].sort((a, b) => {
-    const indexA = CATEGORY_ORDER.indexOf(a as any);
-    const indexB = CATEGORY_ORDER.indexOf(b as any);
+    const indexA = categoryOrder.indexOf(a);
+    const indexB = categoryOrder.indexOf(b);
     if (indexA === -1 && indexB === -1) return a.localeCompare(b);
     if (indexA === -1) return 1;
     if (indexB === -1) return -1;

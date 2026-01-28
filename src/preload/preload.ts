@@ -43,6 +43,18 @@ export interface ImportHistory {
   updated_products: number;
 }
 
+export interface CategoryConfig {
+  name: string;
+  color: string;
+  order: number;
+}
+
+export interface AppSettings {
+  lowStockThreshold: number;
+  criticalStockThreshold: number;
+  categories: CategoryConfig[];
+}
+
 const electronAPI = {
   selectCsvFile: (): Promise<string | null> =>
     ipcRenderer.invoke('select-csv-file'),
@@ -70,6 +82,15 @@ const electronAPI = {
 
   getCategories: (): Promise<string[]> =>
     ipcRenderer.invoke('get-categories'),
+
+  getSettings: (): Promise<AppSettings | null> =>
+    ipcRenderer.invoke('get-settings'),
+
+  saveSettings: (settings: AppSettings): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('save-settings', settings),
+
+  updateProductItemGroup: (msf: string, itemGroup: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('update-product-item-group', msf, itemGroup),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
