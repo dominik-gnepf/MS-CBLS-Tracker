@@ -20,8 +20,15 @@ export interface Inventory {
   id: number;
   msf: string;
   quantity: number;
+  datacenter: string;
   import_date: string;
   source_file: string | null;
+}
+
+export interface Datacenter {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 export interface ImportHistory {

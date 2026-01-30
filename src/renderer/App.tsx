@@ -7,14 +7,20 @@ import DetailModal from './components/DetailModal';
 import ImportResultModal from './components/ImportResultModal';
 import SettingsModal from './components/SettingsModal';
 import MsfConfigModal from './components/MsfConfigModal';
+import DatacenterSelector from './components/DatacenterSelector';
+import HomePage from './components/HomePage';
+import Timer from './components/Timer';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 
 // App version - automatically injected from package.json at build time
 declare const __APP_VERSION__: string;
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
 
+type ViewMode = 'home' | 'tracker';
+
 function AppContent() {
   const { settings, updateSettings, getCategoryOrder } = useSettings();
+  const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [inventory, setInventory] = useState<Record<string, Product[]>>({});
   const [filteredInventory, setFilteredInventory] = useState<Record<string, Product[]>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -24,6 +30,7 @@ function AppContent() {
   const [visibleCategories, setVisibleCategories] = useState<Set<string>>(new Set(getCategoryOrder()));
   const [showSettings, setShowSettings] = useState(false);
   const [showMsfConfig, setShowMsfConfig] = useState(false);
+  const [selectedDatacenter, setSelectedDatacenter] = useState<string>('');
   const [importResult, setImportResult] = useState<{
     success: boolean;
     recordsProcessed?: number;
@@ -35,7 +42,7 @@ function AppContent() {
   const loadInventory = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await window.electronAPI.getInventory();
+      const data = await window.electronAPI.getInventory(selectedDatacenter || undefined);
       setInventory(data);
       setFilteredInventory(data);
     } catch (error) {
@@ -43,7 +50,7 @@ function AppContent() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectedDatacenter]);
 
   useEffect(() => {
     loadInventory();
@@ -83,11 +90,20 @@ function AppContent() {
   }, [inventory, searchQuery, showLowStockOnly, visibleCategories, settings.lowStockThreshold]);
 
   const handleImport = async () => {
+    // Require datacenter selection for import
+    if (!selectedDatacenter) {
+      setImportResult({
+        success: false,
+        error: 'Please select a datacenter before importing. This ensures inventory counts are tracked separately per datacenter.',
+      });
+      return;
+    }
+
     try {
       const filePath = await window.electronAPI.selectCsvFile();
       if (!filePath) return;
 
-      const result = await window.electronAPI.importCsv(filePath);
+      const result = await window.electronAPI.importCsv(filePath, selectedDatacenter);
       setImportResult(result);
 
       if (result.success) {
@@ -122,6 +138,13 @@ function AppContent() {
     setSelectedProduct(product);
   };
 
+  const handleOpenTracker = (datacenterId?: string) => {
+    if (datacenterId) {
+      setSelectedDatacenter(datacenterId);
+    }
+    setViewMode('tracker');
+  };
+
   const totalProducts = Object.values(inventory).flat().length;
   const lowStockCount = Object.values(inventory)
     .flat()
@@ -134,24 +157,55 @@ function AppContent() {
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
+              {/* Home Button */}
+              <button
+                onClick={() => setViewMode('home')}
+                className={`p-2 rounded-lg transition-colors ${
+                  viewMode === 'home'
+                    ? 'bg-blue-100 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+                }`}
+                title="Home"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+              </button>
               <div>
                 <h1 className="text-xl font-bold text-gray-800">MS Cable Tracker</h1>
                 <p className="text-xs text-gray-400">v{APP_VERSION}</p>
               </div>
-              <div className="text-sm text-gray-500">
-                {totalProducts} products | {lowStockCount} low stock
-              </div>
+              {viewMode === 'tracker' && (
+                <>
+                  <DatacenterSelector
+                    selectedDatacenter={selectedDatacenter}
+                    onSelectDatacenter={setSelectedDatacenter}
+                    onDatacentersChanged={loadInventory}
+                  />
+                  <div className="text-sm text-gray-500">
+                    {totalProducts} products | {lowStockCount} low stock
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowMsfConfig(true)}
-                className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                title="MSF Configurations"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                </svg>
-              </button>
+              {/* Timer */}
+              <Timer defaultMinutes={6} />
+              
+              {viewMode === 'tracker' && (
+                <>
+                  <button
+                    onClick={() => setShowMsfConfig(true)}
+                    className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="MSF Configurations"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                  </button>
+                  <FileUpload onImport={handleImport} isLoading={isLoading} />
+                </>
+              )}
               <button
                 onClick={() => setShowSettings(true)}
                 className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
@@ -162,54 +216,60 @@ function AppContent() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </button>
-              <FileUpload onImport={handleImport} isLoading={isLoading} />
             </div>
           </div>
         </div>
       </header>
 
-      {/* Filter Bar */}
-      <FilterBar
-        searchQuery={searchQuery}
-        onSearch={handleSearch}
-        showLowStockOnly={showLowStockOnly}
-        onToggleLowStock={() => setShowLowStockOnly(!showLowStockOnly)}
-        visibleCategories={visibleCategories}
-        onToggleCategory={toggleCategory}
-        categories={Object.keys(inventory)}
-      />
-
-      {/* Main Content */}
-      <main className="p-4">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="text-gray-500">Loading inventory...</div>
-          </div>
-        ) : Object.keys(filteredInventory).length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-            <svg
-              className="w-16 h-16 mb-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-              />
-            </svg>
-            <p className="text-lg font-medium">No cables found</p>
-            <p className="mt-1">Import a CSV file to get started</p>
-          </div>
-        ) : (
-          <Overview
-            inventory={filteredInventory}
-            onProductClick={handleProductClick}
+      {/* View Content */}
+      {viewMode === 'home' ? (
+        <HomePage onOpenTracker={handleOpenTracker} />
+      ) : (
+        <>
+          {/* Filter Bar */}
+          <FilterBar
+            searchQuery={searchQuery}
+            onSearch={handleSearch}
+            showLowStockOnly={showLowStockOnly}
+            onToggleLowStock={() => setShowLowStockOnly(!showLowStockOnly)}
+            visibleCategories={visibleCategories}
+            onToggleCategory={toggleCategory}
+            categories={Object.keys(inventory)}
           />
-        )}
-      </main>
+
+          {/* Main Content */}
+          <main className="p-4">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-gray-500">Loading inventory...</div>
+              </div>
+            ) : Object.keys(filteredInventory).length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                <svg
+                  className="w-16 h-16 mb-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                  />
+                </svg>
+                <p className="text-lg font-medium">No cables found</p>
+                <p className="mt-1">Import a CSV file to get started</p>
+              </div>
+            ) : (
+              <Overview
+                inventory={filteredInventory}
+                onProductClick={handleProductClick}
+              />
+            )}
+          </main>
+        </>
+      )}
 
       {/* Detail Modal */}
       {selectedProduct && (
@@ -217,6 +277,7 @@ function AppContent() {
           product={selectedProduct}
           onClose={() => setSelectedProduct(null)}
           onProductUpdated={loadInventory}
+          datacenter={selectedDatacenter}
         />
       )}
 

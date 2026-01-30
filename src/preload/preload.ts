@@ -30,8 +30,15 @@ export interface Inventory {
   id: number;
   msf: string;
   quantity: number;
+  datacenter: string;
   import_date: string;
   source_file: string | null;
+}
+
+export interface Datacenter {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 export interface ImportHistory {
@@ -70,17 +77,17 @@ const electronAPI = {
   selectCsvFile: (): Promise<string | null> =>
     ipcRenderer.invoke('select-csv-file'),
 
-  importCsv: (filePath: string): Promise<ImportResult> =>
-    ipcRenderer.invoke('import-csv', filePath),
+  importCsv: (filePath: string, datacenter?: string): Promise<ImportResult> =>
+    ipcRenderer.invoke('import-csv', filePath, datacenter || ''),
 
-  getInventory: (): Promise<Record<string, Product[]>> =>
-    ipcRenderer.invoke('get-inventory'),
+  getInventory: (datacenter?: string): Promise<Record<string, Product[]>> =>
+    ipcRenderer.invoke('get-inventory', datacenter),
 
-  getAllProducts: (): Promise<Product[]> =>
-    ipcRenderer.invoke('get-all-products'),
+  getAllProducts: (datacenter?: string): Promise<Product[]> =>
+    ipcRenderer.invoke('get-all-products', datacenter),
 
-  getProductDetails: (msf: string): Promise<{ product: Product | null; history: Inventory[] }> =>
-    ipcRenderer.invoke('get-product-details', msf),
+  getProductDetails: (msf: string, datacenter?: string): Promise<{ product: Product | null; history: Inventory[] }> =>
+    ipcRenderer.invoke('get-product-details', msf, datacenter),
 
   updateProductCategory: (msf: string, category: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('update-product-category', msf, category),
@@ -121,6 +128,19 @@ const electronAPI = {
 
   getProductsWithConfig: (): Promise<Array<Product & { config: MsfConfig | null }>> =>
     ipcRenderer.invoke('get-products-with-config'),
+
+  // Datacenter APIs
+  getAllDatacenters: (): Promise<Datacenter[]> =>
+    ipcRenderer.invoke('get-all-datacenters'),
+
+  addDatacenter: (id: string, name: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('add-datacenter', id, name),
+
+  updateDatacenter: (id: string, name: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('update-datacenter', id, name),
+
+  deleteDatacenter: (id: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('delete-datacenter', id),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

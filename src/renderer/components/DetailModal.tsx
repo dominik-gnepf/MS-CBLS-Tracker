@@ -6,9 +6,10 @@ interface DetailModalProps {
   product: Product;
   onClose: () => void;
   onProductUpdated?: () => void;
+  datacenter?: string;
 }
 
-const DetailModal: React.FC<DetailModalProps> = ({ product, onClose, onProductUpdated }) => {
+const DetailModal: React.FC<DetailModalProps> = ({ product, onClose, onProductUpdated, datacenter }) => {
   const { settings } = useSettings();
   const [history, setHistory] = useState<Inventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -22,7 +23,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ product, onClose, onProductUp
     const loadHistory = async () => {
       setIsLoading(true);
       try {
-        const details = await window.electronAPI.getProductDetails(product.msf);
+        const details = await window.electronAPI.getProductDetails(product.msf, datacenter);
         setHistory(details.history || []);
       } catch (error) {
         console.error('Error loading product details:', error);
@@ -32,7 +33,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ product, onClose, onProductUp
     };
 
     loadHistory();
-  }, [product.msf]);
+  }, [product.msf, datacenter]);
 
   const handleCategoryChange = async (newCategory: string) => {
     setSelectedCategory(newCategory);

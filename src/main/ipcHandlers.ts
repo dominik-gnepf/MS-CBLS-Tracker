@@ -26,6 +26,12 @@ import {
   loadSettings,
   saveSettings,
   AppSettings,
+  getAllDatacenters,
+  getDatacenter,
+  addDatacenter,
+  deleteDatacenter,
+  updateDatacenter,
+  Datacenter,
 } from './database';
 import { parseCSV, generateSimpleDescription, ParsedCable } from './csvParser';
 
@@ -45,8 +51,8 @@ export function setupIpcHandlers() {
   });
 
   // Import CSV file
-  ipcMain.handle('import-csv', async (event, filePath: string) => {
-    console.log(`Starting CSV import for: ${filePath}`);
+  ipcMain.handle('import-csv', async (event, filePath: string, datacenter: string = '') => {
+    console.log(`Starting CSV import for: ${filePath} into datacenter: ${datacenter || 'all'}`);
 
     try {
       if (!filePath) {
@@ -67,10 +73,10 @@ export function setupIpcHandlers() {
       // Start batch mode to avoid saving after every operation
       startBatch();
 
-      // Reset all existing inventory to 0 before importing
+      // Reset all existing inventory to 0 before importing for this datacenter
       // This ensures items not in the new CSV show as 0 quantity
-      const resetCount = resetAllInventory(filename);
-      console.log(`Reset ${resetCount} existing products to 0 quantity`);
+      const resetCount = resetAllInventory(filename, datacenter);
+      console.log(`Reset ${resetCount} existing products to 0 quantity for datacenter: ${datacenter || 'all'}`);
 
       console.log(`Importing ${cables.length} cables from CSV...`);
 
@@ -87,7 +93,7 @@ export function setupIpcHandlers() {
           updatedProducts++;
         }
 
-        // Upsert product
+        // Upsert product (MSF database stays the same for all datacenters)
         upsertProduct({
           msf: cable.msf,
           item_name: cable.itemName,
@@ -103,8 +109,8 @@ export function setupIpcHandlers() {
           datacenter: cable.datacenter,
         });
 
-        // Insert inventory record
-        insertInventory(cable.msf, cable.quantity, filename);
+        // Insert inventory record with datacenter
+        insertInventory(cable.msf, cable.quantity, filename, datacenter);
       }
 
       // Record import history
@@ -133,9 +139,9 @@ export function setupIpcHandlers() {
   });
 
   // Get inventory grouped by category
-  ipcMain.handle('get-inventory', async () => {
+  ipcMain.handle('get-inventory', async (event, datacenter?: string) => {
     try {
-      return getInventoryByCategory();
+      return getInventoryByCategory(datacenter);
     } catch (error) {
       console.error('Error getting inventory:', error);
       return {};
@@ -143,9 +149,9 @@ export function setupIpcHandlers() {
   });
 
   // Get all products as flat list
-  ipcMain.handle('get-all-products', async () => {
+  ipcMain.handle('get-all-products', async (event, datacenter?: string) => {
     try {
-      return getLatestInventory();
+      return getLatestInventory(datacenter);
     } catch (error) {
       console.error('Error getting products:', error);
       return [];
@@ -153,10 +159,10 @@ export function setupIpcHandlers() {
   });
 
   // Get single product with history
-  ipcMain.handle('get-product-details', async (event, msf: string) => {
+  ipcMain.handle('get-product-details', async (event, msf: string, datacenter?: string) => {
     try {
       const product = getProduct(msf);
-      const history = getInventoryHistory(msf);
+      const history = getInventoryHistory(msf, datacenter);
       return { product, history };
     } catch (error) {
       console.error('Error getting product details:', error);
@@ -292,6 +298,46 @@ export function setupIpcHandlers() {
     } catch (error) {
       console.error('Error getting products with config:', error);
       return [];
+    }
+  });
+
+  // Datacenter handlers
+  ipcMain.handle('get-all-datacenters', async () => {
+    try {
+      return getAllDatacenters();
+    } catch (error) {
+      console.error('Error getting datacenters:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('add-datacenter', async (event, id: string, name: string) => {
+    try {
+      addDatacenter(id, name);
+      return { success: true };
+    } catch (error) {
+      console.error('Error adding datacenter:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('update-datacenter', async (event, id: string, name: string) => {
+    try {
+      updateDatacenter(id, name);
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating datacenter:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('delete-datacenter', async (event, id: string) => {
+    try {
+      deleteDatacenter(id);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting datacenter:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
 }

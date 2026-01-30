@@ -131,11 +131,28 @@ export async function initDatabase(): Promise<void> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       msf TEXT NOT NULL,
       quantity INTEGER NOT NULL,
+      datacenter TEXT NOT NULL DEFAULT '',
       import_date TEXT DEFAULT CURRENT_TIMESTAMP,
       source_file TEXT,
       FOREIGN KEY (msf) REFERENCES products(msf)
     )
   `);
+
+  // Datacenters table for managing available datacenters
+  db.run(`
+    CREATE TABLE IF NOT EXISTS datacenters (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Add datacenter column to existing inventory table if it doesn't exist
+  try {
+    db.run('ALTER TABLE inventory ADD COLUMN datacenter TEXT NOT NULL DEFAULT ""');
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS import_history (
@@ -153,6 +170,7 @@ export async function initDatabase(): Promise<void> {
   db.run('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)');
   db.run('CREATE INDEX IF NOT EXISTS idx_products_cable_type ON products(cable_type)');
   db.run('CREATE INDEX IF NOT EXISTS idx_inventory_msf ON inventory(msf)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_inventory_datacenter ON inventory(datacenter)');
 
   // MSF Configuration table for manual overrides
   db.run(`
@@ -209,8 +227,15 @@ export interface Inventory {
   id: number;
   msf: string;
   quantity: number;
+  datacenter: string;
   import_date: string;
   source_file: string | null;
+}
+
+export interface Datacenter {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 export interface ImportHistory {
@@ -339,7 +364,17 @@ export function updateProductCategory(msf: string, category: string): void {
 }
 
 // Inventory operations
-export function getLatestInventory(): Array<Product & { quantity: number }> {
+export function getLatestInventory(datacenter?: string): Array<Product & { quantity: number }> {
+  if (datacenter) {
+    return queryAll<Product & { quantity: number }>(`
+      SELECT p.*, COALESCE(
+        (SELECT quantity FROM inventory WHERE msf = p.msf AND datacenter = ? ORDER BY import_date DESC LIMIT 1),
+        0
+      ) as quantity
+      FROM products p
+      ORDER BY p.category, p.cable_length_value
+    `, [datacenter]);
+  }
   return queryAll<Product & { quantity: number }>(`
     SELECT p.*, COALESCE(
       (SELECT quantity FROM inventory WHERE msf = p.msf ORDER BY import_date DESC LIMIT 1),
@@ -350,8 +385,8 @@ export function getLatestInventory(): Array<Product & { quantity: number }> {
   `);
 }
 
-export function getInventoryByCategory(): Record<string, Array<Product & { quantity: number }>> {
-  const inventory = getLatestInventory();
+export function getInventoryByCategory(datacenter?: string): Record<string, Array<Product & { quantity: number }>> {
+  const inventory = getLatestInventory(datacenter);
   const grouped: Record<string, Array<Product & { quantity: number }>> = {};
 
   for (const item of inventory) {
@@ -365,28 +400,31 @@ export function getInventoryByCategory(): Record<string, Array<Product & { quant
   return grouped;
 }
 
-export function insertInventory(msf: string, quantity: number, sourceFile: string): void {
+export function insertInventory(msf: string, quantity: number, sourceFile: string, datacenter: string = ''): void {
   // Use JavaScript timestamp for more precise ordering
   const timestamp = new Date().toISOString();
-  run(`INSERT INTO inventory (msf, quantity, source_file, import_date) VALUES (?, ?, ?, ?)`, [msf, quantity, sourceFile, timestamp]);
+  run(`INSERT INTO inventory (msf, quantity, source_file, import_date, datacenter) VALUES (?, ?, ?, ?, ?)`, [msf, quantity, sourceFile, timestamp, datacenter]);
 }
 
-// Reset all inventory to 0 before a full import
-// This inserts a 0-quantity record for all existing products
-export function resetAllInventory(sourceFile: string): number {
+// Reset all inventory to 0 before a full import for a specific datacenter
+// This inserts a 0-quantity record for all existing products in that datacenter
+export function resetAllInventory(sourceFile: string, datacenter: string = ''): number {
   const products = getAllProducts();
   let resetCount = 0;
   const timestamp = new Date().toISOString();
 
   for (const product of products) {
-    run(`INSERT INTO inventory (msf, quantity, source_file, import_date) VALUES (?, 0, ?, ?)`, [product.msf, sourceFile + ' (reset)', timestamp]);
+    run(`INSERT INTO inventory (msf, quantity, source_file, import_date, datacenter) VALUES (?, 0, ?, ?, ?)`, [product.msf, sourceFile + ' (reset)', timestamp, datacenter]);
     resetCount++;
   }
 
   return resetCount;
 }
 
-export function getInventoryHistory(msf: string): Inventory[] {
+export function getInventoryHistory(msf: string, datacenter?: string): Inventory[] {
+  if (datacenter) {
+    return queryAll<Inventory>('SELECT * FROM inventory WHERE msf = ? AND datacenter = ? ORDER BY import_date DESC', [msf, datacenter]);
+  }
   return queryAll<Inventory>('SELECT * FROM inventory WHERE msf = ? ORDER BY import_date DESC', [msf]);
 }
 
@@ -561,4 +599,28 @@ export function getProductsWithConfig(): Array<Product & { quantity: number; con
       } : null,
     };
   });
+}
+
+// Datacenter operations
+export function getAllDatacenters(): Datacenter[] {
+  return queryAll<Datacenter>('SELECT * FROM datacenters ORDER BY name');
+}
+
+export function getDatacenter(id: string): Datacenter | undefined {
+  return queryOne<Datacenter>('SELECT * FROM datacenters WHERE id = ?', [id]);
+}
+
+export function addDatacenter(id: string, name: string): void {
+  run('INSERT OR REPLACE INTO datacenters (id, name) VALUES (?, ?)', [id, name]);
+}
+
+export function deleteDatacenter(id: string): void {
+  // Delete inventory records for this datacenter
+  run('DELETE FROM inventory WHERE datacenter = ?', [id]);
+  // Delete the datacenter
+  run('DELETE FROM datacenters WHERE id = ?', [id]);
+}
+
+export function updateDatacenter(id: string, name: string): void {
+  run('UPDATE datacenters SET name = ? WHERE id = ?', [name, id]);
 }
