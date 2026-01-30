@@ -1,6 +1,6 @@
-import { AppSettings, CategoryConfig, MsfConfig, Datacenter } from '../preload/preload';
+import { AppSettings, CategoryConfig, MsfConfig, Datacenter, Link } from '../preload/preload';
 
-export type { AppSettings, CategoryConfig, MsfConfig, Datacenter };
+export type { AppSettings, CategoryConfig, MsfConfig, Datacenter, Link };
 
 // Re-export types from preload
 declare global {
@@ -36,6 +36,23 @@ declare global {
       addDatacenter: (id: string, name: string) => Promise<{ success: boolean; error?: string }>;
       updateDatacenter: (id: string, name: string) => Promise<{ success: boolean; error?: string }>;
       deleteDatacenter: (id: string) => Promise<{ success: boolean; error?: string }>;
+      // Link APIs
+      getAllLinks: () => Promise<Link[]>;
+      getStarredLinks: () => Promise<Link[]>;
+      addLink: (title: string, url: string, description?: string, category?: string) => Promise<{ success: boolean; id?: number; error?: string }>;
+      updateLink: (id: number, title: string, url: string, description?: string, category?: string) => Promise<{ success: boolean; error?: string }>;
+      toggleLinkStar: (id: number) => Promise<{ success: boolean; error?: string }>;
+      deleteLink: (id: number) => Promise<{ success: boolean; error?: string }>;
+      openExternalLink: (url: string) => Promise<{ success: boolean; error?: string }>;
+      // Update APIs
+      checkForUpdates: () => Promise<{ success: boolean; version?: string; error?: string }>;
+      downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
+      installUpdate: () => Promise<void>;
+      onUpdateAvailable: (callback: (info: { version: string; releaseNotes?: string; releaseDate?: string }) => void) => () => void;
+      onUpdateNotAvailable: (callback: () => void) => () => void;
+      onUpdateDownloadProgress: (callback: (progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void) => () => void;
+      onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void;
+      onUpdateError: (callback: (error: string) => void) => () => void;
     };
   }
 }

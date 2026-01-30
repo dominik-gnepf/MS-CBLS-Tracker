@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron';
+import { ipcMain, dialog, shell } from 'electron';
 import path from 'path';
 import {
   getProduct,
@@ -32,6 +32,14 @@ import {
   deleteDatacenter,
   updateDatacenter,
   Datacenter,
+  getAllLinks,
+  getStarredLinks,
+  getLink,
+  addLink,
+  updateLink,
+  toggleLinkStar,
+  deleteLink,
+  Link,
 } from './database';
 import { parseCSV, generateSimpleDescription, ParsedCable } from './csvParser';
 
@@ -337,6 +345,75 @@ export function setupIpcHandlers() {
       return { success: true };
     } catch (error) {
       console.error('Error deleting datacenter:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Link handlers
+  ipcMain.handle('get-all-links', async () => {
+    try {
+      return getAllLinks();
+    } catch (error) {
+      console.error('Error getting links:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('get-starred-links', async () => {
+    try {
+      return getStarredLinks();
+    } catch (error) {
+      console.error('Error getting starred links:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('add-link', async (event, title: string, url: string, description?: string, category?: string) => {
+    try {
+      const id = addLink(title, url, description, category);
+      return { success: true, id };
+    } catch (error) {
+      console.error('Error adding link:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('update-link', async (event, id: number, title: string, url: string, description?: string, category?: string) => {
+    try {
+      updateLink(id, title, url, description, category);
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating link:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('toggle-link-star', async (event, id: number) => {
+    try {
+      toggleLinkStar(id);
+      return { success: true };
+    } catch (error) {
+      console.error('Error toggling link star:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('delete-link', async (event, id: number) => {
+    try {
+      deleteLink(id);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting link:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('open-external-link', async (event, url: string) => {
+    try {
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      console.error('Error opening link:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });

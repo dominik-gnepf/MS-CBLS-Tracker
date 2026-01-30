@@ -31,6 +31,17 @@ export interface Datacenter {
   created_at: string;
 }
 
+export interface Link {
+  id: number;
+  title: string;
+  url: string;
+  description: string | null;
+  starred: number;
+  category: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ImportHistory {
   id: number;
   filename: string;

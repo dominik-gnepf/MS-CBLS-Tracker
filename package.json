@@ -1,6 +1,6 @@
 {
   "name": "ms-cable-tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Cable Inventory Management Application",
   "main": "dist/main/main.js",
   "type": "commonjs",
@@ -11,18 +11,23 @@
     "build": "npm run build:main && vite build",
     "build:main": "tsc -p tsconfig.node.json",
     "build:electron": "npm run build && electron-builder",
+    "publish": "npm run build && electron-builder --publish always",
     "preview": "vite preview"
   },
   "dependencies": {
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.7.3",
     "papaparse": "^5.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-window": "^1.8.10",
     "sql.js": "^1.11.0"
   },
   "devDependencies": {
     "@types/papaparse": "^5.3.15",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/react-window": "^1.8.8",
     "@types/sql.js": "^1.4.9",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
@@ -41,6 +46,11 @@
     "productName": "MS Cable Tracker",
     "copyright": "Copyright © 2026 Dominik Gnepf",
     "icon": "assets/icon.ico",
+    "publish": {
+      "provider": "github",
+      "owner": "dominik-gnepf",
+      "repo": "MS-CBLS-Tracker"
+    },
     "directories": {
       "output": "release"
     },
@@ -65,7 +75,10 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "assets/icon.ico"

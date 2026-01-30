@@ -73,6 +73,17 @@ export interface MsfConfig {
   updated_at: string;
 }
 
+export interface Link {
+  id: number;
+  title: string;
+  url: string;
+  description: string | null;
+  starred: number;
+  category: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const electronAPI = {
   selectCsvFile: (): Promise<string | null> =>
     ipcRenderer.invoke('select-csv-file'),
@@ -141,6 +152,68 @@ const electronAPI = {
 
   deleteDatacenter: (id: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('delete-datacenter', id),
+
+  // Link APIs
+  getAllLinks: (): Promise<Link[]> =>
+    ipcRenderer.invoke('get-all-links'),
+
+  getStarredLinks: (): Promise<Link[]> =>
+    ipcRenderer.invoke('get-starred-links'),
+
+  addLink: (title: string, url: string, description?: string, category?: string): Promise<{ success: boolean; id?: number; error?: string }> =>
+    ipcRenderer.invoke('add-link', title, url, description, category),
+
+  updateLink: (id: number, title: string, url: string, description?: string, category?: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('update-link', id, title, url, description, category),
+
+  toggleLinkStar: (id: number): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('toggle-link-star', id),
+
+  deleteLink: (id: number): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('delete-link', id),
+
+  openExternalLink: (url: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('open-external-link', url),
+
+  // Update APIs
+  checkForUpdates: (): Promise<{ success: boolean; version?: string; error?: string }> =>
+    ipcRenderer.invoke('check-for-updates'),
+
+  downloadUpdate: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('download-update'),
+
+  installUpdate: (): Promise<void> =>
+    ipcRenderer.invoke('install-update'),
+
+  onUpdateAvailable: (callback: (info: { version: string; releaseNotes?: string; releaseDate?: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: { version: string; releaseNotes?: string; releaseDate?: string }) => callback(info);
+    ipcRenderer.on('update-available', handler);
+    return () => ipcRenderer.removeListener('update-available', handler);
+  },
+
+  onUpdateNotAvailable: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('update-not-available', handler);
+    return () => ipcRenderer.removeListener('update-not-available', handler);
+  },
+
+  onUpdateDownloadProgress: (callback: (progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => callback(progress);
+    ipcRenderer.on('update-download-progress', handler);
+    return () => ipcRenderer.removeListener('update-download-progress', handler);
+  },
+
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: { version: string }) => callback(info);
+    ipcRenderer.on('update-downloaded', handler);
+    return () => ipcRenderer.removeListener('update-downloaded', handler);
+  },
+
+  onUpdateError: (callback: (error: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, error: string) => callback(error);
+    ipcRenderer.on('update-error', handler);
+    return () => ipcRenderer.removeListener('update-error', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

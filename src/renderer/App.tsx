@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Product } from './types';
 import FileUpload from './components/FileUpload';
 import Overview from './components/Overview';
@@ -10,6 +10,7 @@ import MsfConfigModal from './components/MsfConfigModal';
 import DatacenterSelector from './components/DatacenterSelector';
 import HomePage from './components/HomePage';
 import Timer from './components/Timer';
+import UpdateNotification from './components/UpdateNotification';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 
 // App version - automatically injected from package.json at build time
@@ -22,7 +23,6 @@ function AppContent() {
   const { settings, updateSettings, getCategoryOrder } = useSettings();
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [inventory, setInventory] = useState<Record<string, Product[]>>({});
-  const [filteredInventory, setFilteredInventory] = useState<Record<string, Product[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,7 +44,6 @@ function AppContent() {
     try {
       const data = await window.electronAPI.getInventory(selectedDatacenter || undefined);
       setInventory(data);
-      setFilteredInventory(data);
     } catch (error) {
       console.error('Error loading inventory:', error);
     } finally {
@@ -56,9 +55,9 @@ function AppContent() {
     loadInventory();
   }, [loadInventory]);
 
-  useEffect(() => {
-    // Apply filters
-    let filtered: Record<string, Product[]> = {};
+  // Memoized filtered inventory - avoids duplicate state and unnecessary re-renders
+  const filteredInventory = useMemo(() => {
+    const filtered: Record<string, Product[]> = {};
 
     for (const [category, products] of Object.entries(inventory)) {
       if (!visibleCategories.has(category)) continue;
@@ -86,7 +85,7 @@ function AppContent() {
       }
     }
 
-    setFilteredInventory(filtered);
+    return filtered;
   }, [inventory, searchQuery, showLowStockOnly, visibleCategories, settings.lowStockThreshold]);
 
   const handleImport = async () => {
@@ -303,6 +302,9 @@ function AppContent() {
         onClose={() => setShowMsfConfig(false)}
         onConfigUpdated={loadInventory}
       />
+
+      {/* Update Notification */}
+      <UpdateNotification />
     </div>
   );
 }

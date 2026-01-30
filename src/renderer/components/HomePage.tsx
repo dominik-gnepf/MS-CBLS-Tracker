@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
+import { Link } from '../types';
+import LinksManager from './LinksManager';
 
 interface DatacenterStats {
   id: string;
@@ -16,7 +18,9 @@ interface HomePageProps {
 const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
   const { settings } = useSettings();
   const [datacenterStats, setDatacenterStats] = useState<DatacenterStats[]>([]);
+  const [starredLinks, setStarredLinks] = useState<Link[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showLinksManager, setShowLinksManager] = useState(false);
   const [overallStats, setOverallStats] = useState({
     totalProducts: 0,
     lowStockCount: 0,
@@ -30,6 +34,10 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
   const loadData = async () => {
     setIsLoading(true);
     try {
+      // Get starred links
+      const starred = await window.electronAPI.getStarredLinks();
+      setStarredLinks(starred);
+
       // Get all datacenters
       const dcs = await window.electronAPI.getAllDatacenters();
 
@@ -69,6 +77,14 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
     }
   };
 
+  const handleOpenLink = async (url: string) => {
+    try {
+      await window.electronAPI.openExternalLink(url);
+    } catch (error) {
+      console.error('Error opening link:', error);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -99,7 +115,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
       </div>
 
       {/* Main Navigation Tiles */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {/* Cable Tracker Tile */}
         <button
           onClick={() => onOpenTracker()}
@@ -124,6 +140,30 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
           </div>
         </button>
 
+        {/* My Links Tile */}
+        <button
+          onClick={() => setShowLinksManager(true)}
+          className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-200 p-6 text-left border-2 border-transparent hover:border-purple-500 group"
+        >
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-purple-100 rounded-lg group-hover:bg-purple-200 transition-colors">
+              <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-800">My Links</h3>
+              <p className="text-gray-500">Save and organize important links</p>
+            </div>
+          </div>
+          <div className="flex items-center text-purple-600 font-medium">
+            <span>Manage Links</span>
+            <svg className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </button>
+
         {/* Future Features Tile */}
         <div className="bg-white rounded-xl shadow-md p-6 border-2 border-dashed border-gray-300">
           <div className="flex items-center gap-4 mb-4">
@@ -141,10 +181,50 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
             <li>• Cable request management</li>
             <li>• Automated reorder alerts</li>
             <li>• Export reports</li>
-            <li>• Multi-user support</li>
           </ul>
         </div>
       </div>
+
+      {/* Starred Links Section */}
+      {starredLinks.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+              </svg>
+              Starred Links
+            </h2>
+            <button
+              onClick={() => setShowLinksManager(true)}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              Manage all links →
+            </button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {starredLinks.map((link) => (
+              <button
+                key={link.id}
+                onClick={() => handleOpenLink(link.url)}
+                className="bg-white rounded-lg shadow-sm hover:shadow-md transition-all p-3 text-left border border-gray-200 hover:border-blue-300 group"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <svg className="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                  </svg>
+                  <span className="font-medium text-gray-800 truncate text-sm group-hover:text-blue-600">
+                    {link.title}
+                  </span>
+                </div>
+                {link.category && (
+                  <span className="text-xs text-gray-400">{link.category}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Datacenter Status Cards */}
       {datacenterStats.length > 0 && (
@@ -222,6 +302,13 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
           </button>
         </div>
       )}
+
+      {/* Links Manager Modal */}
+      <LinksManager
+        isOpen={showLinksManager}
+        onClose={() => setShowLinksManager(false)}
+        onLinksChanged={loadData}
+      />
     </div>
   );
 };

@@ -172,6 +172,20 @@ export async function initDatabase(): Promise<void> {
   db.run('CREATE INDEX IF NOT EXISTS idx_inventory_msf ON inventory(msf)');
   db.run('CREATE INDEX IF NOT EXISTS idx_inventory_datacenter ON inventory(datacenter)');
 
+  // Links table for storing important links
+  db.run(`
+    CREATE TABLE IF NOT EXISTS links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      description TEXT,
+      starred INTEGER DEFAULT 0,
+      category TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // MSF Configuration table for manual overrides
   db.run(`
     CREATE TABLE IF NOT EXISTS msf_config (
@@ -623,4 +637,54 @@ export function deleteDatacenter(id: string): void {
 
 export function updateDatacenter(id: string, name: string): void {
   run('UPDATE datacenters SET name = ? WHERE id = ?', [name, id]);
+}
+
+// Link types and operations
+export interface Link {
+  id: number;
+  title: string;
+  url: string;
+  description: string | null;
+  starred: number;
+  category: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getAllLinks(): Link[] {
+  return queryAll<Link>('SELECT * FROM links ORDER BY starred DESC, title');
+}
+
+export function getStarredLinks(): Link[] {
+  return queryAll<Link>('SELECT * FROM links WHERE starred = 1 ORDER BY title');
+}
+
+export function getLink(id: number): Link | undefined {
+  return queryOne<Link>('SELECT * FROM links WHERE id = ?', [id]);
+}
+
+export function addLink(title: string, url: string, description?: string, category?: string): number {
+  run('INSERT INTO links (title, url, description, category) VALUES (?, ?, ?, ?)', [
+    title,
+    url,
+    description || null,
+    category || null,
+  ]);
+  const result = queryOne<{ id: number }>('SELECT last_insert_rowid() as id');
+  return result?.id || 0;
+}
+
+export function updateLink(id: number, title: string, url: string, description?: string, category?: string): void {
+  run(
+    'UPDATE links SET title = ?, url = ?, description = ?, category = ?, updated_at = datetime("now") WHERE id = ?',
+    [title, url, description || null, category || null, id]
+  );
+}
+
+export function toggleLinkStar(id: number): void {
+  run('UPDATE links SET starred = NOT starred, updated_at = datetime("now") WHERE id = ?', [id]);
+}
+
+export function deleteLink(id: number): void {
+  run('DELETE FROM links WHERE id = ?', [id]);
 }

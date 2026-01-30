@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import { initDatabase } from './database';
 import { setupIpcHandlers } from './ipcHandlers';
+import { initUpdater, setupUpdaterIpc } from './updater';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -46,8 +47,14 @@ app.whenReady().then(async () => {
 
   // Setup IPC handlers
   setupIpcHandlers();
+  setupUpdaterIpc();
 
   createWindow();
+
+  // Initialize auto-updater (only in production)
+  if (!isDev && mainWindow) {
+    initUpdater(mainWindow);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
