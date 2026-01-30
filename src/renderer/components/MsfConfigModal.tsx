@@ -33,7 +33,7 @@ const MsfConfigModal: React.FC<MsfConfigModalProps> = ({ isOpen, onClose, onConf
   const loadProducts = async () => {
     setIsLoading(true);
     try {
-      const data = await window.electronAPI.getProductsWithConfig();
+      const data = await window.api.getProductsWithConfig();
       setProducts(data);
     } catch (error) {
       console.error('Error loading products:', error);
@@ -81,7 +81,7 @@ const MsfConfigModal: React.FC<MsfConfigModalProps> = ({ isOpen, onClose, onConf
 
     setIsSaving(true);
     try {
-      const result = await window.electronAPI.saveMsfConfig(editingConfig);
+      const result = await window.api.saveMsfConfig(editingConfig);
       if (result.success) {
         await loadProducts();
         onConfigUpdated();
@@ -100,7 +100,7 @@ const MsfConfigModal: React.FC<MsfConfigModalProps> = ({ isOpen, onClose, onConf
     if (!confirm('Delete this configuration? The product will use auto-detected settings.')) return;
 
     try {
-      const result = await window.electronAPI.deleteMsfConfig(selectedMsf);
+      const result = await window.api.deleteMsfConfig(selectedMsf);
       if (result.success) {
         setEditingConfig(null);
         setSelectedMsf(null);

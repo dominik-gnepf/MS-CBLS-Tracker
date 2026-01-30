@@ -21,7 +21,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const loadSettings = async () => {
     try {
-      const loadedSettings = await window.electronAPI.getSettings();
+      const loadedSettings = await window.api.getSettings();
       if (loadedSettings) {
         setSettings(loadedSettings);
       }
@@ -34,7 +34,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const updateSettings = async (newSettings: AppSettings) => {
     try {
-      const result = await window.electronAPI.saveSettings(newSettings);
+      const result = await window.api.saveSettings(newSettings);
       if (result.success) {
         setSettings(newSettings);
       } else {

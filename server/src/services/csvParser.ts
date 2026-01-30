@@ -1,36 +1,5 @@
 import Papa from 'papaparse';
-import fs from 'fs';
-
-export interface CSVRecord {
-  Datacenter: string;
-  MSF: string;
-  'Item Name': string;
-  'Item Type': string;
-  'Item Group': string;
-  'Dimension Group': string;
-  'Current Location': string;
-  'OnHand Quantity': string;
-  'Quantity To Move': string;
-  'New Location': string;
-  Notes: string;
-  'Operation Result': string;
-}
-
-export interface ParsedCable {
-  msf: string;
-  itemName: string;
-  itemGroup: string;
-  quantity: number;
-  location: string;
-  datacenter: string;
-  category: string;
-  cableType: string | null;
-  cableLength: string | null;
-  cableLengthValue: number | null;
-  cableLengthUnit: string | null;
-  speed: string | null;
-  connectorType: string | null;
-}
+import { ParsedCable, CSVRecord } from '../types';
 
 // Length extraction pattern - matches formats like "5M", "7m", "2FT", "2.5M"
 const lengthPattern = /[\-\s](\d+(?:\.\d+)?)\s*(M|FT)[\-\s]/i;
@@ -59,7 +28,6 @@ const connectorPatterns: Record<string, RegExp> = {
 };
 
 export function extractLength(itemName: string): { value: number | null; unit: string | null; display: string | null } {
-  // Try different patterns
   let match = itemName.match(lengthPattern);
   if (!match) {
     match = itemName.match(lengthPatternAlt);
@@ -126,8 +94,6 @@ export function extractCableProperties(itemName: string): {
 
 export function classifyCable(itemName: string, itemGroup: string): string {
   const upperName = itemName.toUpperCase();
-  const speed = extractSpeed(itemName);
-  const cableType = extractCableType(itemName);
 
   // 400G AOC - QSFP-DD with AOC and 400G
   if (upperName.includes('400G') && upperName.includes('AOC') && !upperName.includes('DR4')) {
@@ -187,18 +153,16 @@ export function classifyCable(itemName: string, itemGroup: string): string {
   return 'Other';
 }
 
-export function parseCSV(filePath: string): Promise<ParsedCable[]> {
+export function parseCSVContent(content: string): Promise<ParsedCable[]> {
   return new Promise((resolve, reject) => {
     try {
-      let fileContent = fs.readFileSync(filePath, 'utf-8');
-
-      // Remove BOM (Byte Order Mark) if present - common with Windows/Excel CSV files
+      // Remove BOM (Byte Order Mark) if present
+      let fileContent = content;
       if (fileContent.charCodeAt(0) === 0xFEFF) {
         fileContent = fileContent.slice(1);
       }
 
-      console.log(`Parsing CSV file: ${filePath}`);
-      console.log(`File content length: ${fileContent.length} characters`);
+      console.log(`Parsing CSV content, length: ${fileContent.length} characters`);
 
       Papa.parse<CSVRecord>(fileContent, {
         header: true,
@@ -249,32 +213,8 @@ export function parseCSV(filePath: string): Promise<ParsedCable[]> {
         },
       });
     } catch (error) {
-      console.error('Error reading CSV file:', error);
+      console.error('Error parsing CSV content:', error);
       reject(error);
     }
   });
-}
-
-export function generateSimpleDescription(cable: ParsedCable): string {
-  const parts: string[] = [];
-
-  if (cable.cableLength) {
-    parts.push(cable.cableLength);
-  }
-
-  if (cable.speed) {
-    parts.push(cable.speed);
-  }
-
-  if (cable.cableType) {
-    parts.push(cable.cableType);
-  }
-
-  if (parts.length === 0) {
-    // Extract a short description from the item name
-    const shortName = cable.itemName.split('-').slice(0, 3).join('-');
-    return shortName.length > 40 ? shortName.substring(0, 40) + '...' : shortName;
-  }
-
-  return parts.join(' - ');
 }

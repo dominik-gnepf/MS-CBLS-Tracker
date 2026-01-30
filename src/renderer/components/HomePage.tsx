@@ -35,14 +35,14 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
     setIsLoading(true);
     try {
       // Get starred links
-      const starred = await window.electronAPI.getStarredLinks();
+      const starred = await window.api.getStarredLinks();
       setStarredLinks(starred);
 
       // Get all datacenters
-      const dcs = await window.electronAPI.getAllDatacenters();
+      const dcs = await window.api.getAllDatacenters();
 
       // Get overall stats (all datacenters)
-      const allInventory = await window.electronAPI.getInventory();
+      const allInventory = await window.api.getInventory();
       const allProducts = Object.values(allInventory).flat();
       const overallLowStock = allProducts.filter(p => p.quantity < settings.lowStockThreshold && p.quantity >= settings.criticalStockThreshold).length;
       const overallCriticalStock = allProducts.filter(p => p.quantity < settings.criticalStockThreshold).length;
@@ -56,7 +56,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
       // Get stats per datacenter
       const stats: DatacenterStats[] = [];
       for (const dc of dcs) {
-        const inventory = await window.electronAPI.getInventory(dc.id);
+        const inventory = await window.api.getInventory(dc.id);
         const products = Object.values(inventory).flat();
         const lowStock = products.filter(p => p.quantity < settings.lowStockThreshold && p.quantity >= settings.criticalStockThreshold).length;
         const criticalStock = products.filter(p => p.quantity < settings.criticalStockThreshold).length;
@@ -77,12 +77,8 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
     }
   };
 
-  const handleOpenLink = async (url: string) => {
-    try {
-      await window.electronAPI.openExternalLink(url);
-    } catch (error) {
-      console.error('Error opening link:', error);
-    }
+  const handleOpenLink = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   if (isLoading) {

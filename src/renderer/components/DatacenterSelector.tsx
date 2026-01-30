@@ -22,7 +22,7 @@ const DatacenterSelector: React.FC<DatacenterSelectorProps> = ({
 
   const loadDatacenters = async () => {
     try {
-      const dcs = await window.electronAPI.getAllDatacenters();
+      const dcs = await window.api.getAllDatacenters();
       setDatacenters(dcs);
     } catch (error) {
       console.error('Error loading datacenters:', error);
@@ -50,7 +50,7 @@ const DatacenterSelector: React.FC<DatacenterSelectorProps> = ({
     if (!newDcId.trim() || !newDcName.trim()) return;
 
     try {
-      await window.electronAPI.addDatacenter(newDcId.trim().toUpperCase(), newDcName.trim());
+      await window.api.addDatacenter(newDcId.trim().toUpperCase(), newDcName.trim());
       await loadDatacenters();
       setNewDcId('');
       setNewDcName('');
@@ -68,7 +68,7 @@ const DatacenterSelector: React.FC<DatacenterSelectorProps> = ({
     }
 
     try {
-      await window.electronAPI.deleteDatacenter(id);
+      await window.api.deleteDatacenter(id);
       await loadDatacenters();
       if (selectedDatacenter === id) {
         onSelectDatacenter('');

@@ -11,7 +11,8 @@
       "Bash(timeout /t 15)",
       "Bash(taskkill:*)",
       "Bash(find:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(npm run build:frontend:*)"
     ]
   }
 }

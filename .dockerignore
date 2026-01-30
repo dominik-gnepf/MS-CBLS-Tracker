@@ -1,8 +1,43 @@
+# Dependencies
 node_modules
+server/node_modules
+
+# Build outputs
 dist
+server/dist
 release
+
+# Development files
 *.log
 .git
 .gitignore
+.env
+.env.*
+
+# IDE
 .vscode
+.idea
+*.swp
+*.swo
+
+# Test files
+coverage
+*.test.ts
+*.spec.ts
+
+# Electron specific (no longer needed)
+src/main
+src/preload
+
+# Documentation
 *.md
+!README.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp
+temp
+*.tmp

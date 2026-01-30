@@ -1,19 +1,37 @@
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import Database from 'better-sqlite3';
 import path from 'path';
-import { app } from 'electron';
 import fs from 'fs';
+import {
+  Product,
+  Inventory,
+  Datacenter,
+  ImportHistory,
+  Link,
+  MsfConfig,
+  AppSettings,
+} from '../types';
 
-let db: SqlJsDatabase | null = null;
-let dbPath: string = '';
+let db: Database.Database | null = null;
 
-// Settings file path
+// Data directory - configurable via environment variable
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+
+function getDbPath(): string {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  return path.join(DATA_DIR, 'inventory.db');
+}
+
 function getSettingsPath(): string {
-  const userDataPath = app.getPath('userData');
-  return path.join(userDataPath, 'settings.json');
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  return path.join(DATA_DIR, 'settings.json');
 }
 
 // Default settings
-const DEFAULT_SETTINGS = {
+const DEFAULT_SETTINGS: AppSettings = {
   lowStockThreshold: 20,
   criticalStockThreshold: 10,
   categories: [
@@ -31,19 +49,12 @@ const DEFAULT_SETTINGS = {
   ],
 };
 
-export interface AppSettings {
-  lowStockThreshold: number;
-  criticalStockThreshold: number;
-  categories: Array<{ name: string; color: string; order: number }>;
-}
-
 export function loadSettings(): AppSettings {
   const settingsPath = getSettingsPath();
   try {
     if (fs.existsSync(settingsPath)) {
       const data = fs.readFileSync(settingsPath, 'utf-8');
       const settings = JSON.parse(data);
-      // Merge with defaults to ensure all properties exist
       return { ...DEFAULT_SETTINGS, ...settings };
     }
   } catch (error) {
@@ -62,50 +73,17 @@ export function saveSettings(settings: AppSettings): void {
   }
 }
 
-// Get the path to the sql.js WASM file
-function getWasmPath(): string {
-  const isDev = !app.isPackaged;
+export function initDatabase(): void {
+  const dbPath = getDbPath();
+  console.log(`Initializing database at: ${dbPath}`);
 
-  if (isDev) {
-    // In development, use the WASM file from node_modules
-    return path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
-  } else {
-    // In production, the WASM file should be in the app resources
-    return path.join(process.resourcesPath, 'sql-wasm.wasm');
-  }
-}
+  db = new Database(dbPath);
 
-export function getDbPath(): string {
-  const userDataPath = app.getPath('userData');
-  const dataDir = path.join(userDataPath, 'data');
-
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-
-  return path.join(dataDir, 'inventory.db');
-}
-
-export async function initDatabase(): Promise<void> {
-  const wasmPath = getWasmPath();
-
-  // Initialize sql.js with the WASM binary
-  const SQL = await initSqlJs({
-    locateFile: () => wasmPath,
-  });
-
-  dbPath = getDbPath();
-
-  // Load existing database or create new one
-  if (fs.existsSync(dbPath)) {
-    const buffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
-  }
+  // Enable WAL mode for better concurrent access
+  db.pragma('journal_mode = WAL');
 
   // Create tables
-  db.run(`
+  db.exec(`
     -- Products table: stores cable mappings
     CREATE TABLE IF NOT EXISTS products (
       msf TEXT PRIMARY KEY,
@@ -126,7 +104,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS inventory (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       msf TEXT NOT NULL,
@@ -138,8 +116,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  // Datacenters table for managing available datacenters
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS datacenters (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -147,14 +124,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  // Add datacenter column to existing inventory table if it doesn't exist
-  try {
-    db.run('ALTER TABLE inventory ADD COLUMN datacenter TEXT NOT NULL DEFAULT ""');
-  } catch (e) {
-    // Column already exists, ignore
-  }
-
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS import_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       filename TEXT NOT NULL,
@@ -165,15 +135,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  // Create indexes
-  db.run('CREATE INDEX IF NOT EXISTS idx_products_item_group ON products(item_group)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_products_cable_type ON products(cable_type)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_inventory_msf ON inventory(msf)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_inventory_datacenter ON inventory(datacenter)');
-
-  // Links table for storing important links
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -186,8 +148,7 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  // MSF Configuration table for manual overrides
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS msf_config (
       msf TEXT PRIMARY KEY,
       short_name TEXT,
@@ -200,128 +161,39 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
-  // Save to disk
-  saveDatabase();
+  // Create indexes
+  db.exec('CREATE INDEX IF NOT EXISTS idx_products_item_group ON products(item_group)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_products_cable_type ON products(cable_type)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_inventory_msf ON inventory(msf)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_inventory_datacenter ON inventory(datacenter)');
+
+  console.log('Database initialized successfully');
 }
 
-export function saveDatabase(): void {
-  if (!db || !dbPath) return;
-
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(dbPath, buffer);
-}
-
-export function getDb(): SqlJsDatabase {
+export function getDb(): Database.Database {
   if (!db) {
     throw new Error('Database not initialized');
   }
   return db;
 }
 
-export interface Product {
-  msf: string;
-  item_name: string;
-  item_group: string | null;
-  category: string | null;
-  cable_type: string | null;
-  cable_length: string | null;
-  cable_length_value: number | null;
-  cable_length_unit: string | null;
-  speed: string | null;
-  connector_type: string | null;
-  location: string | null;
-  datacenter: string | null;
-  metadata: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Inventory {
-  id: number;
-  msf: string;
-  quantity: number;
-  datacenter: string;
-  import_date: string;
-  source_file: string | null;
-}
-
-export interface Datacenter {
-  id: string;
-  name: string;
-  created_at: string;
-}
-
-export interface ImportHistory {
-  id: number;
-  filename: string;
-  import_date: string;
-  records_processed: number;
-  new_products: number;
-  updated_products: number;
-}
-
-function rowToObject<T>(columns: string[], values: any[]): T {
-  const obj: any = {};
-  columns.forEach((col, i) => {
-    obj[col] = values[i];
-  });
-  return obj as T;
-}
-
-function queryAll<T>(sql: string, params: any[] = []): T[] {
-  const stmt = getDb().prepare(sql);
-  if (params.length > 0) {
-    stmt.bind(params);
-  }
-
-  const results: T[] = [];
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push(row as T);
-  }
-  stmt.free();
-  return results;
-}
-
-function queryOne<T>(sql: string, params: any[] = []): T | undefined {
-  const results = queryAll<T>(sql, params);
-  return results[0];
-}
-
-// Flag to control when to save (for batch operations)
-let batchMode = false;
-
-export function startBatch(): void {
-  batchMode = true;
-}
-
-export function endBatch(): void {
-  batchMode = false;
-  saveDatabase();
-}
-
-function run(sql: string, params: any[] = []): void {
-  getDb().run(sql, params);
-  if (!batchMode) {
-    saveDatabase();
-  }
-}
-
 // Product operations
 export function getProduct(msf: string): Product | undefined {
-  return queryOne<Product>('SELECT * FROM products WHERE msf = ?', [msf]);
+  const stmt = getDb().prepare('SELECT * FROM products WHERE msf = ?');
+  return stmt.get(msf) as Product | undefined;
 }
 
 export function getAllProducts(): Product[] {
-  return queryAll<Product>('SELECT * FROM products ORDER BY category, cable_length_value');
+  const stmt = getDb().prepare('SELECT * FROM products ORDER BY category, cable_length_value');
+  return stmt.all() as Product[];
 }
 
 export function upsertProduct(product: Partial<Product>): void {
   const existing = getProduct(product.msf!);
 
   if (existing) {
-    run(`
+    const stmt = getDb().prepare(`
       UPDATE products SET
         item_name = ?,
         item_group = ?,
@@ -336,7 +208,8 @@ export function upsertProduct(product: Partial<Product>): void {
         datacenter = ?,
         updated_at = datetime('now')
       WHERE msf = ?
-    `, [
+    `);
+    stmt.run(
       product.item_name,
       product.item_group || null,
       product.category || null,
@@ -348,14 +221,15 @@ export function upsertProduct(product: Partial<Product>): void {
       product.connector_type || null,
       product.location || null,
       product.datacenter || null,
-      product.msf,
-    ]);
+      product.msf
+    );
   } else {
-    run(`
+    const stmt = getDb().prepare(`
       INSERT INTO products (msf, item_name, item_group, category, cable_type, cable_length,
         cable_length_value, cable_length_unit, speed, connector_type, location, datacenter, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
+    `);
+    stmt.run(
       product.msf,
       product.item_name,
       product.item_group || null,
@@ -368,28 +242,30 @@ export function upsertProduct(product: Partial<Product>): void {
       product.connector_type || null,
       product.location || null,
       product.datacenter || null,
-      product.metadata || null,
-    ]);
+      product.metadata || null
+    );
   }
 }
 
 export function updateProductCategory(msf: string, category: string): void {
-  run(`UPDATE products SET category = ?, updated_at = datetime('now') WHERE msf = ?`, [category, msf]);
+  const stmt = getDb().prepare(`UPDATE products SET category = ?, updated_at = datetime('now') WHERE msf = ?`);
+  stmt.run(category, msf);
 }
 
 // Inventory operations
 export function getLatestInventory(datacenter?: string): Array<Product & { quantity: number }> {
   if (datacenter) {
-    return queryAll<Product & { quantity: number }>(`
+    const stmt = getDb().prepare(`
       SELECT p.*, COALESCE(
         (SELECT quantity FROM inventory WHERE msf = p.msf AND datacenter = ? ORDER BY import_date DESC LIMIT 1),
         0
       ) as quantity
       FROM products p
       ORDER BY p.category, p.cable_length_value
-    `, [datacenter]);
+    `);
+    return stmt.all(datacenter) as Array<Product & { quantity: number }>;
   }
-  return queryAll<Product & { quantity: number }>(`
+  const stmt = getDb().prepare(`
     SELECT p.*, COALESCE(
       (SELECT quantity FROM inventory WHERE msf = p.msf ORDER BY import_date DESC LIMIT 1),
       0
@@ -397,6 +273,7 @@ export function getLatestInventory(datacenter?: string): Array<Product & { quant
     FROM products p
     ORDER BY p.category, p.cable_length_value
   `);
+  return stmt.all() as Array<Product & { quantity: number }>;
 }
 
 export function getInventoryByCategory(datacenter?: string): Record<string, Array<Product & { quantity: number }>> {
@@ -415,20 +292,19 @@ export function getInventoryByCategory(datacenter?: string): Record<string, Arra
 }
 
 export function insertInventory(msf: string, quantity: number, sourceFile: string, datacenter: string = ''): void {
-  // Use JavaScript timestamp for more precise ordering
   const timestamp = new Date().toISOString();
-  run(`INSERT INTO inventory (msf, quantity, source_file, import_date, datacenter) VALUES (?, ?, ?, ?, ?)`, [msf, quantity, sourceFile, timestamp, datacenter]);
+  const stmt = getDb().prepare(`INSERT INTO inventory (msf, quantity, source_file, import_date, datacenter) VALUES (?, ?, ?, ?, ?)`);
+  stmt.run(msf, quantity, sourceFile, timestamp, datacenter);
 }
 
-// Reset all inventory to 0 before a full import for a specific datacenter
-// This inserts a 0-quantity record for all existing products in that datacenter
 export function resetAllInventory(sourceFile: string, datacenter: string = ''): number {
   const products = getAllProducts();
   let resetCount = 0;
   const timestamp = new Date().toISOString();
+  const stmt = getDb().prepare(`INSERT INTO inventory (msf, quantity, source_file, import_date, datacenter) VALUES (?, 0, ?, ?, ?)`);
 
   for (const product of products) {
-    run(`INSERT INTO inventory (msf, quantity, source_file, import_date, datacenter) VALUES (?, 0, ?, ?, ?)`, [product.msf, sourceFile + ' (reset)', timestamp, datacenter]);
+    stmt.run(product.msf, sourceFile + ' (reset)', timestamp, datacenter);
     resetCount++;
   }
 
@@ -437,30 +313,32 @@ export function resetAllInventory(sourceFile: string, datacenter: string = ''): 
 
 export function getInventoryHistory(msf: string, datacenter?: string): Inventory[] {
   if (datacenter) {
-    return queryAll<Inventory>('SELECT * FROM inventory WHERE msf = ? AND datacenter = ? ORDER BY import_date DESC', [msf, datacenter]);
+    const stmt = getDb().prepare('SELECT * FROM inventory WHERE msf = ? AND datacenter = ? ORDER BY import_date DESC');
+    return stmt.all(msf, datacenter) as Inventory[];
   }
-  return queryAll<Inventory>('SELECT * FROM inventory WHERE msf = ? ORDER BY import_date DESC', [msf]);
+  const stmt = getDb().prepare('SELECT * FROM inventory WHERE msf = ? ORDER BY import_date DESC');
+  return stmt.all(msf) as Inventory[];
 }
 
 // Import history operations
 export function recordImport(filename: string, recordsProcessed: number, newProducts: number, updatedProducts: number): number {
-  run(`
+  const stmt = getDb().prepare(`
     INSERT INTO import_history (filename, records_processed, new_products, updated_products)
     VALUES (?, ?, ?, ?)
-  `, [filename, recordsProcessed, newProducts, updatedProducts]);
-
-  const result = queryOne<{ id: number }>('SELECT last_insert_rowid() as id');
-  return result?.id || 0;
+  `);
+  const result = stmt.run(filename, recordsProcessed, newProducts, updatedProducts);
+  return Number(result.lastInsertRowid);
 }
 
 export function getImportHistory(): ImportHistory[] {
-  return queryAll<ImportHistory>('SELECT * FROM import_history ORDER BY import_date DESC LIMIT 50');
+  const stmt = getDb().prepare('SELECT * FROM import_history ORDER BY import_date DESC LIMIT 50');
+  return stmt.all() as ImportHistory[];
 }
 
 // Search
 export function searchProducts(query: string): Array<Product & { quantity: number }> {
   const searchTerm = `%${query}%`;
-  return queryAll<Product & { quantity: number }>(`
+  const stmt = getDb().prepare(`
     SELECT p.*, COALESCE(
       (SELECT quantity FROM inventory WHERE msf = p.msf ORDER BY import_date DESC LIMIT 1),
       0
@@ -468,51 +346,43 @@ export function searchProducts(query: string): Array<Product & { quantity: numbe
     FROM products p
     WHERE p.msf LIKE ? OR p.item_name LIKE ? OR p.category LIKE ?
     ORDER BY p.category, p.cable_length_value
-  `, [searchTerm, searchTerm, searchTerm]);
+  `);
+  return stmt.all(searchTerm, searchTerm, searchTerm) as Array<Product & { quantity: number }>;
 }
 
-// Delete all data from the database
+// Delete all data
 export function deleteAllData(): { productsDeleted: number; inventoryDeleted: number; importsDeleted: number } {
-  const productCount = queryOne<{ count: number }>('SELECT COUNT(*) as count FROM products');
-  const inventoryCount = queryOne<{ count: number }>('SELECT COUNT(*) as count FROM inventory');
-  const importCount = queryOne<{ count: number }>('SELECT COUNT(*) as count FROM import_history');
+  const productCount = (getDb().prepare('SELECT COUNT(*) as count FROM products').get() as { count: number }).count;
+  const inventoryCount = (getDb().prepare('SELECT COUNT(*) as count FROM inventory').get() as { count: number }).count;
+  const importCount = (getDb().prepare('SELECT COUNT(*) as count FROM import_history').get() as { count: number }).count;
 
-  run('DELETE FROM inventory');
-  run('DELETE FROM import_history');
-  run('DELETE FROM products');
+  getDb().exec('DELETE FROM inventory');
+  getDb().exec('DELETE FROM import_history');
+  getDb().exec('DELETE FROM products');
 
   return {
-    productsDeleted: productCount?.count || 0,
-    inventoryDeleted: inventoryCount?.count || 0,
-    importsDeleted: importCount?.count || 0,
+    productsDeleted: productCount,
+    inventoryDeleted: inventoryCount,
+    importsDeleted: importCount,
   };
 }
 
-// MSF Configuration types and operations
-export interface MsfConfig {
-  msf: string;
-  short_name: string | null;
-  category_override: string | null;
-  notes: string | null;
-  hidden: number;
-  custom_order: number | null;
-  created_at: string;
-  updated_at: string;
-}
-
+// MSF Configuration operations
 export function getMsfConfig(msf: string): MsfConfig | undefined {
-  return queryOne<MsfConfig>('SELECT * FROM msf_config WHERE msf = ?', [msf]);
+  const stmt = getDb().prepare('SELECT * FROM msf_config WHERE msf = ?');
+  return stmt.get(msf) as MsfConfig | undefined;
 }
 
 export function getAllMsfConfigs(): MsfConfig[] {
-  return queryAll<MsfConfig>('SELECT * FROM msf_config ORDER BY msf');
+  const stmt = getDb().prepare('SELECT * FROM msf_config ORDER BY msf');
+  return stmt.all() as MsfConfig[];
 }
 
 export function upsertMsfConfig(config: Partial<MsfConfig>): void {
   const existing = getMsfConfig(config.msf!);
 
   if (existing) {
-    run(`
+    const stmt = getDb().prepare(`
       UPDATE msf_config SET
         short_name = ?,
         category_override = ?,
@@ -521,34 +391,36 @@ export function upsertMsfConfig(config: Partial<MsfConfig>): void {
         custom_order = ?,
         updated_at = datetime('now')
       WHERE msf = ?
-    `, [
+    `);
+    stmt.run(
       config.short_name ?? existing.short_name,
       config.category_override ?? existing.category_override,
       config.notes ?? existing.notes,
       config.hidden ?? existing.hidden,
       config.custom_order ?? existing.custom_order,
-      config.msf,
-    ]);
+      config.msf
+    );
   } else {
-    run(`
+    const stmt = getDb().prepare(`
       INSERT INTO msf_config (msf, short_name, category_override, notes, hidden, custom_order)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [
+    `);
+    stmt.run(
       config.msf,
       config.short_name || null,
       config.category_override || null,
       config.notes || null,
       config.hidden || 0,
-      config.custom_order || null,
-    ]);
+      config.custom_order || null
+    );
   }
 }
 
 export function deleteMsfConfig(msf: string): void {
-  run('DELETE FROM msf_config WHERE msf = ?', [msf]);
+  const stmt = getDb().prepare('DELETE FROM msf_config WHERE msf = ?');
+  stmt.run(msf);
 }
 
-// Raw row type from the SQL query with joined config columns
 interface ProductWithConfigRow extends Product {
   quantity: number;
   config_short_name: string | null;
@@ -558,10 +430,9 @@ interface ProductWithConfigRow extends Product {
   config_custom_order: number | null;
 }
 
-// Get all products with their config overrides applied
 export function getProductsWithConfig(): Array<Product & { quantity: number; config: MsfConfig | null }> {
-  const rows = queryAll<ProductWithConfigRow>(`
-    SELECT 
+  const stmt = getDb().prepare(`
+    SELECT
       p.*,
       COALESCE(
         (SELECT quantity FROM inventory WHERE msf = p.msf ORDER BY import_date DESC LIMIT 1),
@@ -576,10 +447,11 @@ export function getProductsWithConfig(): Array<Product & { quantity: number; con
     LEFT JOIN msf_config c ON p.msf = c.msf
     ORDER BY p.category, p.cable_length_value
   `);
+  const rows = stmt.all() as ProductWithConfigRow[];
 
   return rows.map(row => {
-    const hasConfig = row.config_short_name !== null || 
-                      row.config_category_override !== null || 
+    const hasConfig = row.config_short_name !== null ||
+                      row.config_category_override !== null ||
                       row.config_notes !== null ||
                       row.config_hidden !== null ||
                       row.config_custom_order !== null;
@@ -617,74 +489,86 @@ export function getProductsWithConfig(): Array<Product & { quantity: number; con
 
 // Datacenter operations
 export function getAllDatacenters(): Datacenter[] {
-  return queryAll<Datacenter>('SELECT * FROM datacenters ORDER BY name');
+  const stmt = getDb().prepare('SELECT * FROM datacenters ORDER BY name');
+  return stmt.all() as Datacenter[];
 }
 
 export function getDatacenter(id: string): Datacenter | undefined {
-  return queryOne<Datacenter>('SELECT * FROM datacenters WHERE id = ?', [id]);
+  const stmt = getDb().prepare('SELECT * FROM datacenters WHERE id = ?');
+  return stmt.get(id) as Datacenter | undefined;
 }
 
 export function addDatacenter(id: string, name: string): void {
-  run('INSERT OR REPLACE INTO datacenters (id, name) VALUES (?, ?)', [id, name]);
+  const stmt = getDb().prepare('INSERT OR REPLACE INTO datacenters (id, name) VALUES (?, ?)');
+  stmt.run(id, name);
 }
 
 export function deleteDatacenter(id: string): void {
-  // Delete inventory records for this datacenter
-  run('DELETE FROM inventory WHERE datacenter = ?', [id]);
-  // Delete the datacenter
-  run('DELETE FROM datacenters WHERE id = ?', [id]);
+  getDb().exec('BEGIN TRANSACTION');
+  try {
+    getDb().prepare('DELETE FROM inventory WHERE datacenter = ?').run(id);
+    getDb().prepare('DELETE FROM datacenters WHERE id = ?').run(id);
+    getDb().exec('COMMIT');
+  } catch (error) {
+    getDb().exec('ROLLBACK');
+    throw error;
+  }
 }
 
 export function updateDatacenter(id: string, name: string): void {
-  run('UPDATE datacenters SET name = ? WHERE id = ?', [name, id]);
+  const stmt = getDb().prepare('UPDATE datacenters SET name = ? WHERE id = ?');
+  stmt.run(name, id);
 }
 
-// Link types and operations
-export interface Link {
-  id: number;
-  title: string;
-  url: string;
-  description: string | null;
-  starred: number;
-  category: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
+// Link operations
 export function getAllLinks(): Link[] {
-  return queryAll<Link>('SELECT * FROM links ORDER BY starred DESC, title');
+  const stmt = getDb().prepare('SELECT * FROM links ORDER BY starred DESC, title');
+  return stmt.all() as Link[];
 }
 
 export function getStarredLinks(): Link[] {
-  return queryAll<Link>('SELECT * FROM links WHERE starred = 1 ORDER BY title');
+  const stmt = getDb().prepare('SELECT * FROM links WHERE starred = 1 ORDER BY title');
+  return stmt.all() as Link[];
 }
 
 export function getLink(id: number): Link | undefined {
-  return queryOne<Link>('SELECT * FROM links WHERE id = ?', [id]);
+  const stmt = getDb().prepare('SELECT * FROM links WHERE id = ?');
+  return stmt.get(id) as Link | undefined;
 }
 
 export function addLink(title: string, url: string, description?: string, category?: string): number {
-  run('INSERT INTO links (title, url, description, category) VALUES (?, ?, ?, ?)', [
-    title,
-    url,
-    description || null,
-    category || null,
-  ]);
-  const result = queryOne<{ id: number }>('SELECT last_insert_rowid() as id');
-  return result?.id || 0;
+  const stmt = getDb().prepare('INSERT INTO links (title, url, description, category) VALUES (?, ?, ?, ?)');
+  const result = stmt.run(title, url, description || null, category || null);
+  return Number(result.lastInsertRowid);
 }
 
 export function updateLink(id: number, title: string, url: string, description?: string, category?: string): void {
-  run(
-    'UPDATE links SET title = ?, url = ?, description = ?, category = ?, updated_at = datetime("now") WHERE id = ?',
-    [title, url, description || null, category || null, id]
+  const stmt = getDb().prepare(
+    'UPDATE links SET title = ?, url = ?, description = ?, category = ?, updated_at = datetime("now") WHERE id = ?'
   );
+  stmt.run(title, url, description || null, category || null, id);
 }
 
 export function toggleLinkStar(id: number): void {
-  run('UPDATE links SET starred = NOT starred, updated_at = datetime("now") WHERE id = ?', [id]);
+  const stmt = getDb().prepare('UPDATE links SET starred = NOT starred, updated_at = datetime("now") WHERE id = ?');
+  stmt.run(id);
 }
 
 export function deleteLink(id: number): void {
-  run('DELETE FROM links WHERE id = ?', [id]);
+  const stmt = getDb().prepare('DELETE FROM links WHERE id = ?');
+  stmt.run(id);
+}
+
+// Transaction helper for imports
+export function runInTransaction<T>(fn: () => T): T {
+  const db = getDb();
+  db.exec('BEGIN TRANSACTION');
+  try {
+    const result = fn();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }

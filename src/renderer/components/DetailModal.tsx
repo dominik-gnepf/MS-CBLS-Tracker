@@ -23,7 +23,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ product, onClose, onProductUp
     const loadHistory = async () => {
       setIsLoading(true);
       try {
-        const details = await window.electronAPI.getProductDetails(product.msf, datacenter);
+        const details = await window.api.getProductDetails(product.msf, datacenter);
         setHistory(details.history || []);
       } catch (error) {
         console.error('Error loading product details:', error);
@@ -39,7 +39,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ product, onClose, onProductUp
     setSelectedCategory(newCategory);
     setIsSavingCategory(true);
     try {
-      const result = await window.electronAPI.updateProductCategory(product.msf, newCategory);
+      const result = await window.api.updateProductCategory(product.msf, newCategory);
       if (result.success) {
         if (onProductUpdated) {
           onProductUpdated();

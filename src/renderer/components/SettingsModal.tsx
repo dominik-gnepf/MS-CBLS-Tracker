@@ -403,7 +403,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                         }
                         setIsDeleting(true);
                         try {
-                          const result = await window.electronAPI.deleteAllData();
+                          const result = await window.api.deleteAllData();
                           if (result.success) {
                             alert(`Successfully deleted all data:\n- ${result.productsDeleted} products\n- ${result.inventoryDeleted} inventory records\n- ${result.importsDeleted} import history records`);
                             setDeleteConfirmText('');

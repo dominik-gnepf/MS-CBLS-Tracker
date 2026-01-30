@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Product } from './types';
 import FileUpload from './components/FileUpload';
 import Overview from './components/Overview';
@@ -10,7 +10,6 @@ import MsfConfigModal from './components/MsfConfigModal';
 import DatacenterSelector from './components/DatacenterSelector';
 import HomePage from './components/HomePage';
 import Timer from './components/Timer';
-import UpdateNotification from './components/UpdateNotification';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 
 // App version - automatically injected from package.json at build time
@@ -42,7 +41,7 @@ function AppContent() {
   const loadInventory = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await window.electronAPI.getInventory(selectedDatacenter || undefined);
+      const data = await window.api.getInventory(selectedDatacenter || undefined);
       setInventory(data);
     } catch (error) {
       console.error('Error loading inventory:', error);
@@ -88,6 +87,9 @@ function AppContent() {
     return filtered;
   }, [inventory, searchQuery, showLowStockOnly, visibleCategories, settings.lowStockThreshold]);
 
+  // File input ref for CSV import
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleImport = async () => {
     // Require datacenter selection for import
     if (!selectedDatacenter) {
@@ -98,11 +100,19 @@ function AppContent() {
       return;
     }
 
-    try {
-      const filePath = await window.electronAPI.selectCsvFile();
-      if (!filePath) return;
+    // Trigger file input click
+    fileInputRef.current?.click();
+  };
 
-      const result = await window.electronAPI.importCsv(filePath, selectedDatacenter);
+  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset the input so the same file can be selected again
+    event.target.value = '';
+
+    try {
+      const result = await window.api.importCsv(file, selectedDatacenter);
       setImportResult(result);
 
       if (result.success) {
@@ -151,6 +161,15 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Hidden file input for CSV import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept=".csv"
+        onChange={handleFileSelected}
+        className="hidden"
+      />
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="px-4 py-3">
@@ -302,9 +321,6 @@ function AppContent() {
         onClose={() => setShowMsfConfig(false)}
         onConfigUpdated={loadInventory}
       />
-
-      {/* Update Notification */}
-      <UpdateNotification />
     </div>
   );
 }

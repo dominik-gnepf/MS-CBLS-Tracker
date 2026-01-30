@@ -28,7 +28,7 @@ const LinksManager: React.FC<LinksManagerProps> = ({ isOpen, onClose, onLinksCha
   const loadLinks = async () => {
     setIsLoading(true);
     try {
-      const allLinks = await window.electronAPI.getAllLinks();
+      const allLinks = await window.api.getAllLinks();
       setLinks(allLinks);
     } catch (error) {
       console.error('Error loading links:', error);
@@ -43,7 +43,7 @@ const LinksManager: React.FC<LinksManagerProps> = ({ isOpen, onClose, onLinksCha
 
     try {
       if (editingLink) {
-        await window.electronAPI.updateLink(
+        await window.api.updateLink(
           editingLink.id,
           formData.title.trim(),
           formData.url.trim(),
@@ -51,14 +51,14 @@ const LinksManager: React.FC<LinksManagerProps> = ({ isOpen, onClose, onLinksCha
           formData.category.trim() || undefined
         );
       } else {
-        await window.electronAPI.addLink(
+        await window.api.addLink(
           formData.title.trim(),
           formData.url.trim(),
           formData.description.trim() || undefined,
           formData.category.trim() || undefined
         );
       }
-      
+
       resetForm();
       await loadLinks();
       onLinksChanged?.();
@@ -69,7 +69,7 @@ const LinksManager: React.FC<LinksManagerProps> = ({ isOpen, onClose, onLinksCha
 
   const handleToggleStar = async (id: number) => {
     try {
-      await window.electronAPI.toggleLinkStar(id);
+      await window.api.toggleLinkStar(id);
       await loadLinks();
       onLinksChanged?.();
     } catch (error) {
@@ -79,9 +79,9 @@ const LinksManager: React.FC<LinksManagerProps> = ({ isOpen, onClose, onLinksCha
 
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this link?')) return;
-    
+
     try {
-      await window.electronAPI.deleteLink(id);
+      await window.api.deleteLink(id);
       await loadLinks();
       onLinksChanged?.();
     } catch (error) {
@@ -89,12 +89,8 @@ const LinksManager: React.FC<LinksManagerProps> = ({ isOpen, onClose, onLinksCha
     }
   };
 
-  const handleOpenLink = async (url: string) => {
-    try {
-      await window.electronAPI.openExternalLink(url);
-    } catch (error) {
-      console.error('Error opening link:', error);
-    }
+  const handleOpenLink = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleEdit = (link: Link) => {

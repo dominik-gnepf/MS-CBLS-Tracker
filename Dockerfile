@@ -1,48 +1,79 @@
-# Build stage for MS Cable Tracker Electron app
-FROM node:20-bullseye AS builder
-
-# Install dependencies required for Electron builds
-RUN apt-get update && apt-get install -y \
-    libgtk-3-0 \
-    libnotify-dev \
-    libgconf-2-4 \
-    libnss3 \
-    libxss1 \
-    libasound2 \
-    libxtst6 \
-    xauth \
-    xvfb \
-    wine64 \
-    rpm \
-    fakeroot \
-    dpkg \
-    && rm -rf /var/lib/apt/lists/*
+# Stage 1: Build frontend
+FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
+# Install dependencies (only frontend deps needed)
+RUN npm ci --legacy-peer-deps
+
+# Copy frontend source
+COPY src/renderer ./src/renderer
+COPY index.html ./
+COPY vite.config.ts ./
+COPY tsconfig.json ./
+COPY postcss.config.cjs ./
+COPY tailwind.config.cjs ./
+
+# Build frontend
+RUN npm run build:frontend
+
+# Stage 2: Build backend
+FROM node:20-alpine AS backend-builder
+
+WORKDIR /app/server
+
+# Install build dependencies for better-sqlite3
+RUN apk add --no-cache python3 make g++
+
+# Copy server package files
+COPY server/package*.json ./
+
 # Install dependencies
 RUN npm ci
 
-# Copy source files
-COPY . .
+# Copy server source
+COPY server/src ./src
+COPY server/tsconfig.json ./
 
-# Build the application
+# Build backend
 RUN npm run build
 
-# Build Electron distributables (Linux by default)
-# For Windows builds, you may need additional configuration
-RUN npm run build:electron -- --linux
+# Stage 3: Production image
+FROM node:20-alpine AS production
 
-# The built application will be in the /app/release directory
-# You can copy it out using docker cp or mount a volume
+WORKDIR /app
 
-# Output stage - minimal image with just the built artifacts
-FROM alpine:latest AS artifacts
-WORKDIR /output
-COPY --from=builder /app/release /output/
+# Install runtime dependencies for better-sqlite3
+RUN apk add --no-cache python3 make g++
 
-# Default command shows available builds
-CMD ["ls", "-la", "/output"]
+# Install only production dependencies for server
+COPY server/package*.json ./
+RUN npm ci --only=production && apk del python3 make g++
+
+# Copy built backend
+COPY --from=backend-builder /app/server/dist ./dist
+
+# Copy built frontend
+COPY --from=frontend-builder /app/dist/renderer ./public
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV DATA_DIR=/app/data
+ENV STATIC_PATH=/app/public
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+
+# Run the server
+CMD ["node", "dist/index.js"]
