@@ -190,7 +190,7 @@ function AppContent() {
                 </svg>
               </button>
               <div>
-                <h1 className="text-xl font-bold text-gray-800">MS Cable Tracker</h1>
+                <h1 className="text-xl font-bold text-gray-800">MS Daily Tracker</h1>
                 <p className="text-xs text-gray-400">v{APP_VERSION}</p>
               </div>
               {viewMode === 'tracker' && (

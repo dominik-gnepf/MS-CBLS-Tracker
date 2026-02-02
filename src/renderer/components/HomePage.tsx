@@ -112,7 +112,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
 
       {/* Main Navigation Tiles */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {/* Cable Tracker Tile */}
+        {/* Daily Tracker Tile */}
         <button
           onClick={() => onOpenTracker()}
           className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-200 p-6 text-left border-2 border-transparent hover:border-blue-500 group"
@@ -124,7 +124,7 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
               </svg>
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-800">Cable Tracker</h3>
+              <h3 className="text-xl font-bold text-gray-800">Daily Tracker</h3>
               <p className="text-gray-500">View and manage cable inventory</p>
             </div>
           </div>
