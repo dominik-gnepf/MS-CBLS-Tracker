@@ -1,6 +1,6 @@
 # MS Cable Tracker
 
-A desktop application for managing and tracking cable inventory. Built with Electron, React, TypeScript, and Tailwind CSS.
+A web application for managing and tracking cable inventory. Built with React, TypeScript, Tailwind CSS, Express.js, and SQLite.
 
 ## Features
 
@@ -10,6 +10,8 @@ A desktop application for managing and tracking cable inventory. Built with Elec
 - **Search & Filter**: Find cables by MSF, name, or cable length
 - **Low Stock Alerts**: Visual indicators for low stock items
 - **Category Management**: View inventory grouped by cable categories
+- **Multi-Datacenter Support**: Track inventory across multiple datacenters
+- **Favorite Links**: Save and organize frequently used links with starring
 
 ## Prerequisites
 
@@ -21,6 +23,9 @@ A desktop application for managing and tracking cable inventory. Built with Elec
 ```bash
 # Install dependencies
 npm install
+
+# Install server dependencies
+cd server && npm install
 ```
 
 ## Development
@@ -33,43 +38,63 @@ npm run dev
 
 This will:
 1. Start the Vite dev server for the React frontend on port 5173
-2. Build the Electron main process
-3. Launch the Electron app
+2. Start the Express.js backend server on port 3000
+3. The frontend proxies API requests to the backend
 
 ## Build
 
 To build the application for production:
 
 ```bash
-# Build both main process and renderer
 npm run build
-
-# Build packaged executable
-npm run build:electron
 ```
+
+This builds both the frontend and backend. To run the production build:
+
+```bash
+npm start
+```
+
+## Docker Deployment
+
+Build and run with Docker:
+
+```bash
+# Build the Docker image
+npm run docker:build
+
+# Run with Docker Compose
+npm run docker:run
+
+# View logs
+npm run docker:logs
+
+# Stop the container
+npm run docker:stop
+```
+
+The application will be available at `http://localhost:3000`.
 
 ## Project Structure
 
 ```
-src/
-├── main/                 # Electron main process
-│   ├── main.ts          # Electron window creation and app lifecycle
-│   ├── csvParser.ts     # CSV parsing and cable property extraction
-│   ├── database.ts      # SQLite database operations (using sql.js)
-│   └── ipcHandlers.ts   # IPC communication between main and renderer
-├── preload/
-│   └── preload.ts       # Context bridge for secure IPC communication
-└── renderer/            # React UI
-    ├── main.tsx         # React entry point
-    ├── App.tsx          # Main app component
-    ├── types/           # TypeScript type definitions
-    └── components/      # React components
-        ├── FileUpload.tsx           # CSV upload button
-        ├── FilterBar.tsx            # Search and filter controls
-        ├── Overview.tsx             # Inventory display grid
-        ├── CableCard.tsx            # Individual cable card
-        ├── DetailModal.tsx          # Cable detail view
-        └── ImportResultModal.tsx    # Import result feedback
+├── src/
+│   └── renderer/            # React frontend
+│       ├── main.tsx         # React entry point
+│       ├── App.tsx          # Main app component
+│       ├── types/           # TypeScript type definitions
+│       ├── services/        # API service layer
+│       └── components/      # React components
+├── server/
+│   └── src/                 # Express.js backend
+│       ├── index.ts         # Server entry point
+│       ├── app.ts           # Express app configuration
+│       ├── routes/          # API route handlers
+│       └── services/        # Database and CSV parsing
+├── Dockerfile               # Docker build configuration
+├── docker-compose.yml       # Docker Compose configuration
+├── vite.config.ts           # Vite build configuration
+└── package.json             # Project dependencies
 ```
 
 ## CSV Format
@@ -87,11 +112,7 @@ The application expects CSV files with the following columns:
 
 ## Database
 
-The application uses sql.js (SQLite compiled to WebAssembly) for local data storage. The database is stored in the user's app data directory:
-
-- **Windows**: `%APPDATA%/ms-cable-tracker/data/inventory.db`
-- **macOS**: `~/Library/Application Support/ms-cable-tracker/data/inventory.db`
-- **Linux**: `~/.config/ms-cable-tracker/data/inventory.db`
+The application uses SQLite (better-sqlite3) for local data storage. In Docker deployments, the database is stored in a persistent volume at `/app/data`.
 
 ## Cable Categories
 
@@ -111,12 +132,12 @@ Cables are automatically classified into categories based on their item names:
 
 ## Tech Stack
 
-- **Electron** - Desktop application framework
 - **React 18** - UI library
 - **TypeScript** - Type safety
 - **Vite** - Build tool and dev server
 - **Tailwind CSS** - Styling
-- **sql.js** - SQLite in WebAssembly
+- **Express.js** - Backend server
+- **better-sqlite3** - SQLite database
 - **PapaParse** - CSV parsing
 
 ## License

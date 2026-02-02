@@ -32,6 +32,7 @@ const LinksManager: React.FC<LinksManagerProps> = ({ isOpen, onClose, onLinksCha
       setLinks(allLinks);
     } catch (error) {
       console.error('Error loading links:', error);
+      alert(`Error loading links: ${error instanceof Error ? error.message : 'Server may not be running'}`);
     } finally {
       setIsLoading(false);
     }
@@ -69,11 +70,16 @@ const LinksManager: React.FC<LinksManagerProps> = ({ isOpen, onClose, onLinksCha
 
   const handleToggleStar = async (id: number) => {
     try {
-      await window.api.toggleLinkStar(id);
+      const result = await window.api.toggleLinkStar(id);
+      if (!result.success) {
+        alert(`Failed to toggle star: ${result.error || 'Unknown error'}`);
+        return;
+      }
       await loadLinks();
       onLinksChanged?.();
     } catch (error) {
       console.error('Error toggling star:', error);
+      alert(`Error toggling star: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 

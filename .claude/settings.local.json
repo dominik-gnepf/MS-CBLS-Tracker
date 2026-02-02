@@ -12,7 +12,11 @@
       "Bash(taskkill:*)",
       "Bash(find:*)",
       "Bash(npm uninstall:*)",
-      "Bash(npm run build:frontend:*)"
+      "Bash(npm run build:frontend:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git -C \"C:\\\\Users\\\\dognepf\\\\DEV\\\\MS Cable Tracker\\\\MS-CBLS-Tracker\" status)",
+      "Bash(docker:*)",
+      "Bash(curl:*)"
     ]
   }
 }

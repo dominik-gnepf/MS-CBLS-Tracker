@@ -202,23 +202,23 @@ export const api = {
   },
 
   // Update event listeners (no-ops for web version)
-  onUpdateAvailable: (callback: (info: { version: string; releaseNotes?: string; releaseDate?: string }) => void) => {
+  onUpdateAvailable: (_callback: (info: { version: string; releaseNotes?: string; releaseDate?: string }) => void) => {
     return () => {}; // Return empty cleanup function
   },
 
-  onUpdateNotAvailable: (callback: () => void) => {
+  onUpdateNotAvailable: (_callback: () => void) => {
     return () => {};
   },
 
-  onUpdateDownloadProgress: (callback: (progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void) => {
+  onUpdateDownloadProgress: (_callback: (progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void) => {
     return () => {};
   },
 
-  onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
+  onUpdateDownloaded: (_callback: (info: { version: string }) => void) => {
     return () => {};
   },
 
-  onUpdateError: (callback: (error: string) => void) => {
+  onUpdateError: (_callback: (error: string) => void) => {
     return () => {};
   },
 };

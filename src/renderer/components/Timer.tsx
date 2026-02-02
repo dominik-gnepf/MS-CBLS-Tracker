@@ -10,7 +10,7 @@ const Timer: React.FC<TimerProps> = ({ defaultMinutes = 6 }) => {
   const [timeLeft, setTimeLeft] = useState(defaultMinutes * 60); // in seconds
   const [initialTime, setInitialTime] = useState(defaultMinutes * 60);
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 

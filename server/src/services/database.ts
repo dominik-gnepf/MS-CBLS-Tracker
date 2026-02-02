@@ -544,13 +544,13 @@ export function addLink(title: string, url: string, description?: string, catego
 
 export function updateLink(id: number, title: string, url: string, description?: string, category?: string): void {
   const stmt = getDb().prepare(
-    'UPDATE links SET title = ?, url = ?, description = ?, category = ?, updated_at = datetime("now") WHERE id = ?'
+    "UPDATE links SET title = ?, url = ?, description = ?, category = ?, updated_at = datetime('now') WHERE id = ?"
   );
   stmt.run(title, url, description || null, category || null, id);
 }
 
 export function toggleLinkStar(id: number): void {
-  const stmt = getDb().prepare('UPDATE links SET starred = NOT starred, updated_at = datetime("now") WHERE id = ?');
+  const stmt = getDb().prepare("UPDATE links SET starred = NOT starred, updated_at = datetime('now') WHERE id = ?");
   stmt.run(id);
 }
 
