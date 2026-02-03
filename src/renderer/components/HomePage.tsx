@@ -41,34 +41,43 @@ const HomePage: React.FC<HomePageProps> = ({ onOpenTracker }) => {
       // Get all datacenters
       const dcs = await window.api.getAllDatacenters();
 
-      // Get overall stats (all datacenters)
+      // Get overall stats (all datacenters) - single API call
       const allInventory = await window.api.getInventory();
       const allProducts = Object.values(allInventory).flat();
       const overallLowStock = allProducts.filter(p => p.quantity < settings.lowStockThreshold && p.quantity >= settings.criticalStockThreshold).length;
       const overallCriticalStock = allProducts.filter(p => p.quantity < settings.criticalStockThreshold).length;
-      
+
       setOverallStats({
         totalProducts: allProducts.length,
         lowStockCount: overallLowStock,
         criticalStockCount: overallCriticalStock,
       });
 
-      // Get stats per datacenter
-      const stats: DatacenterStats[] = [];
-      for (const dc of dcs) {
-        const inventory = await window.api.getInventory(dc.id);
-        const products = Object.values(inventory).flat();
+      // Compute per-datacenter stats from allProducts (no additional API calls)
+      // Group products by datacenter_id
+      const productsByDatacenter = new Map<string, typeof allProducts>();
+      for (const product of allProducts) {
+        const dcId = product.datacenter_id || '';
+        if (!productsByDatacenter.has(dcId)) {
+          productsByDatacenter.set(dcId, []);
+        }
+        productsByDatacenter.get(dcId)!.push(product);
+      }
+
+      // Build stats from grouped data
+      const stats: DatacenterStats[] = dcs.map(dc => {
+        const products = productsByDatacenter.get(dc.id) || [];
         const lowStock = products.filter(p => p.quantity < settings.lowStockThreshold && p.quantity >= settings.criticalStockThreshold).length;
         const criticalStock = products.filter(p => p.quantity < settings.criticalStockThreshold).length;
-        
-        stats.push({
+
+        return {
           id: dc.id,
           name: dc.name,
           totalProducts: products.length,
           lowStockCount: lowStock,
           criticalStockCount: criticalStock,
-        });
-      }
+        };
+      });
       setDatacenterStats(stats);
     } catch (error) {
       console.error('Error loading home data:', error);

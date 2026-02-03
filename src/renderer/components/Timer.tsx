@@ -27,27 +27,34 @@ const Timer: React.FC<TimerProps> = ({ defaultMinutes = 6 }) => {
   // Play alarm sound using Web Audio API
   const playAlarm = useCallback(() => {
     setIsAlarmPlaying(true);
-    
+
+    // Close any existing context first to prevent leaks
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+
+    let ctx: AudioContext | null = null;
     try {
       // Create audio context
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      audioContextRef.current = new AudioContext();
-      const ctx = audioContextRef.current;
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      ctx = new AudioContextClass();
+      audioContextRef.current = ctx;
 
       // Play a sequence of beeps
       const playBeep = (startTime: number, frequency: number, duration: number) => {
-        const oscillator = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-        
+        const oscillator = ctx!.createOscillator();
+        const gainNode = ctx!.createGain();
+
         oscillator.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        
+        gainNode.connect(ctx!.destination);
+
         oscillator.frequency.value = frequency;
         oscillator.type = 'sine';
-        
+
         gainNode.gain.setValueAtTime(0.5, startTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
-        
+
         oscillator.start(startTime);
         oscillator.stop(startTime + duration);
       };
@@ -68,6 +75,11 @@ const Timer: React.FC<TimerProps> = ({ defaultMinutes = 6 }) => {
     } catch (error) {
       console.error('Error playing alarm:', error);
       setIsAlarmPlaying(false);
+      // Ensure cleanup on error
+      if (ctx) {
+        ctx.close().catch(() => {});
+      }
+      audioContextRef.current = null;
     }
   }, []);
 

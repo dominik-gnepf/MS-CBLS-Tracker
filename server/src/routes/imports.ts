@@ -52,9 +52,9 @@ router.post('/', upload.single('file'), async (req, res) => {
     const filename = file.originalname;
 
     // Run import in a transaction
-    const result = db.runInTransaction(() => {
+    const result = await db.runInTransaction(async (client) => {
       // Reset all existing inventory to 0 before importing for this datacenter
-      const resetCount = db.resetAllInventory(filename, datacenter);
+      const resetCount = await db.resetAllInventory(filename, datacenter);
       console.log(`Reset ${resetCount} existing products to 0 quantity for datacenter: ${datacenter || 'all'}`);
 
       console.log(`Importing ${cables.length} cables from CSV...`);
@@ -63,7 +63,7 @@ router.post('/', upload.single('file'), async (req, res) => {
       let updatedProducts = 0;
 
       for (const cable of cables) {
-        const existing = db.getProduct(cable.msf);
+        const existing = await db.getProduct(cable.msf);
 
         if (!existing) {
           newProducts++;
@@ -72,7 +72,7 @@ router.post('/', upload.single('file'), async (req, res) => {
         }
 
         // Upsert product
-        db.upsertProduct({
+        await db.upsertProduct({
           msf: cable.msf,
           item_name: cable.itemName,
           item_group: cable.itemGroup,
@@ -88,11 +88,11 @@ router.post('/', upload.single('file'), async (req, res) => {
         });
 
         // Insert inventory record with datacenter
-        db.insertInventory(cable.msf, cable.quantity, filename, datacenter);
+        await db.insertInventory(cable.msf, cable.quantity, filename, datacenter);
       }
 
       // Record import history
-      db.recordImport(filename, cables.length, newProducts, updatedProducts);
+      await db.recordImport(filename, cables.length, newProducts, updatedProducts);
 
       return { newProducts, updatedProducts };
     });
@@ -115,9 +115,9 @@ router.post('/', upload.single('file'), async (req, res) => {
 });
 
 // GET /api/imports/history - Get import history
-router.get('/history', (req, res) => {
+router.get('/history', async (req, res) => {
   try {
-    const history = db.getImportHistory();
+    const history = await db.getImportHistory();
     res.json(history);
   } catch (error) {
     console.error('Error getting import history:', error);

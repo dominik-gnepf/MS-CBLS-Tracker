@@ -4,9 +4,9 @@ import * as db from '../services/database';
 const router = Router();
 
 // GET /api/msf-configs - Get all MSF configs
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const configs = db.getAllMsfConfigs();
+    const configs = await db.getAllMsfConfigs();
     res.json(configs);
   } catch (error) {
     console.error('Error getting MSF configs:', error);
@@ -15,10 +15,10 @@ router.get('/', (req, res) => {
 });
 
 // GET /api/msf-configs/:msf - Get MSF config
-router.get('/:msf', (req, res) => {
+router.get('/:msf', async (req, res) => {
   try {
     const { msf } = req.params;
-    const config = db.getMsfConfig(msf);
+    const config = await db.getMsfConfig(msf);
     res.json(config || null);
   } catch (error) {
     console.error('Error getting MSF config:', error);
@@ -27,11 +27,11 @@ router.get('/:msf', (req, res) => {
 });
 
 // PUT /api/msf-configs/:msf - Save MSF config
-router.put('/:msf', (req, res) => {
+router.put('/:msf', async (req, res) => {
   try {
     const { msf } = req.params;
     const config = { ...req.body, msf };
-    db.upsertMsfConfig(config);
+    await db.upsertMsfConfig(config);
     res.json({ success: true });
   } catch (error) {
     console.error('Error saving MSF config:', error);
@@ -40,10 +40,10 @@ router.put('/:msf', (req, res) => {
 });
 
 // DELETE /api/msf-configs/:msf - Delete MSF config
-router.delete('/:msf', (req, res) => {
+router.delete('/:msf', async (req, res) => {
   try {
     const { msf } = req.params;
-    db.deleteMsfConfig(msf);
+    await db.deleteMsfConfig(msf);
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting MSF config:', error);

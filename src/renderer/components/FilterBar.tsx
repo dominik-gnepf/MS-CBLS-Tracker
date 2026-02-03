@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 
 interface FilterBarProps {
@@ -23,15 +23,18 @@ const FilterBar: React.FC<FilterBarProps> = ({
   const { getCategoryOrder } = useSettings();
   const categoryOrder = getCategoryOrder();
 
-  // Sort categories by settings order
-  const sortedCategories = [...categories].sort((a, b) => {
-    const indexA = categoryOrder.indexOf(a);
-    const indexB = categoryOrder.indexOf(b);
-    if (indexA === -1 && indexB === -1) return a.localeCompare(b);
-    if (indexA === -1) return 1;
-    if (indexB === -1) return -1;
-    return indexA - indexB;
-  });
+  // Memoize sorted categories to avoid re-sorting on every render
+  const sortedCategories = useMemo(() =>
+    [...categories].sort((a, b) => {
+      const indexA = categoryOrder.indexOf(a);
+      const indexB = categoryOrder.indexOf(b);
+      if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
+    }),
+    [categories, categoryOrder]
+  );
 
   return (
     <div className="bg-white border-b border-gray-200 px-4 py-3">

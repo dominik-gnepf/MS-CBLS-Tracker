@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Pool, PoolClient } from 'pg';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -11,17 +11,14 @@ import {
   AppSettings,
 } from '../types';
 
-let db: Database.Database | null = null;
+let pool: Pool | null = null;
 
-// Data directory - configurable via environment variable
+// Data directory for settings file (fallback)
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 
-function getDbPath(): string {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  return path.join(DATA_DIR, 'inventory.db');
-}
+// Database connection URL
+const DATABASE_URL = process.env.DATABASE_URL ||
+  'postgresql://ms_tracker:ms_tracker_secret@localhost:5432/ms_tracker_db';
 
 function getSettingsPath(): string {
   if (!fs.existsSync(DATA_DIR)) {
@@ -73,143 +70,185 @@ export function saveSettings(settings: AppSettings): void {
   }
 }
 
-export function initDatabase(): void {
-  const dbPath = getDbPath();
-  console.log(`Initializing database at: ${dbPath}`);
+export async function initDatabase(): Promise<void> {
+  console.log(`Connecting to PostgreSQL at: ${DATABASE_URL.replace(/:[^:@]+@/, ':****@')}`);
 
-  db = new Database(dbPath);
+  pool = new Pool({
+    connectionString: DATABASE_URL,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
 
-  // Enable WAL mode for better concurrent access
-  db.pragma('journal_mode = WAL');
+  // Test connection
+  try {
+    const client = await pool.connect();
+    console.log('PostgreSQL connected successfully');
+    client.release();
+  } catch (error) {
+    console.error('Failed to connect to PostgreSQL:', error);
+    throw error;
+  }
 
-  // Create tables
-  db.exec(`
-    -- Products table: stores cable mappings
-    CREATE TABLE IF NOT EXISTS products (
-      msf TEXT PRIMARY KEY,
-      item_name TEXT NOT NULL,
-      item_group TEXT,
-      category TEXT,
-      cable_type TEXT,
-      cable_length TEXT,
-      cable_length_value REAL,
-      cable_length_unit TEXT,
-      speed TEXT,
-      connector_type TEXT,
-      location TEXT,
-      datacenter TEXT,
-      metadata TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS inventory (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      msf TEXT NOT NULL,
-      quantity INTEGER NOT NULL,
-      datacenter TEXT NOT NULL DEFAULT '',
-      import_date TEXT DEFAULT CURRENT_TIMESTAMP,
-      source_file TEXT,
-      FOREIGN KEY (msf) REFERENCES products(msf)
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS datacenters (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS import_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      filename TEXT NOT NULL,
-      import_date TEXT DEFAULT CURRENT_TIMESTAMP,
-      records_processed INTEGER,
-      new_products INTEGER,
-      updated_products INTEGER
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS links (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      url TEXT NOT NULL,
-      description TEXT,
-      starred INTEGER DEFAULT 0,
-      category TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS msf_config (
-      msf TEXT PRIMARY KEY,
-      short_name TEXT,
-      category_override TEXT,
-      notes TEXT,
-      hidden INTEGER DEFAULT 0,
-      custom_order INTEGER,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Create indexes
-  db.exec('CREATE INDEX IF NOT EXISTS idx_products_item_group ON products(item_group)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_products_cable_type ON products(cable_type)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_inventory_msf ON inventory(msf)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_inventory_datacenter ON inventory(datacenter)');
-
+  // Create tables if they don't exist (for backwards compatibility)
+  await createTables();
   console.log('Database initialized successfully');
 }
 
-export function getDb(): Database.Database {
-  if (!db) {
+async function createTables(): Promise<void> {
+  const client = await getPool().connect();
+  try {
+    // Create msf_information table (maps to products)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS msf_information (
+        msf VARCHAR(50) PRIMARY KEY,
+        item_name VARCHAR(500) NOT NULL,
+        item_group VARCHAR(100),
+        category VARCHAR(100),
+        cable_type VARCHAR(50),
+        cable_length VARCHAR(20),
+        cable_length_value DECIMAL(10,2),
+        cable_length_unit VARCHAR(10),
+        speed VARCHAR(20),
+        connector_type VARCHAR(50),
+        location VARCHAR(100),
+        datacenter VARCHAR(50),
+        metadata JSONB,
+        short_name VARCHAR(100),
+        category_override VARCHAR(100),
+        notes TEXT,
+        hidden BOOLEAN DEFAULT FALSE,
+        custom_order INTEGER,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create dc_stock_count table (maps to inventory)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS dc_stock_count (
+        id SERIAL PRIMARY KEY,
+        msf VARCHAR(50) NOT NULL REFERENCES msf_information(msf) ON DELETE CASCADE,
+        datacenter VARCHAR(50) NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        import_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        source_file VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create datacenters table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS datacenters (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create import_history table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS import_history (
+        id SERIAL PRIMARY KEY,
+        filename VARCHAR(255) NOT NULL,
+        datacenter VARCHAR(50),
+        records_processed INTEGER DEFAULT 0,
+        new_products INTEGER DEFAULT 0,
+        updated_products INTEGER DEFAULT 0,
+        import_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create links table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS links (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(200) NOT NULL,
+        url VARCHAR(500) NOT NULL,
+        description TEXT,
+        starred BOOLEAN DEFAULT FALSE,
+        category VARCHAR(100),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create indexes
+    await client.query('CREATE INDEX IF NOT EXISTS idx_msf_info_category ON msf_information(category)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_msf_info_cable_type ON msf_information(cable_type)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_dc_stock_msf ON dc_stock_count(msf)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_dc_stock_datacenter ON dc_stock_count(datacenter)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_dc_stock_import_date ON dc_stock_count(import_date DESC)');
+
+  } finally {
+    client.release();
+  }
+}
+
+export function getPool(): Pool {
+  if (!pool) {
     throw new Error('Database not initialized');
   }
-  return db;
+  return pool;
 }
 
 // Product operations
-export function getProduct(msf: string): Product | undefined {
-  const stmt = getDb().prepare('SELECT * FROM products WHERE msf = ?');
-  return stmt.get(msf) as Product | undefined;
+export async function getProduct(msf: string): Promise<Product | undefined> {
+  const result = await getPool().query(
+    'SELECT * FROM msf_information WHERE msf = $1',
+    [msf]
+  );
+  return mapRowToProduct(result.rows[0]);
 }
 
-export function getAllProducts(): Product[] {
-  const stmt = getDb().prepare('SELECT * FROM products ORDER BY category, cable_length_value');
-  return stmt.all() as Product[];
+export async function getAllProducts(): Promise<Product[]> {
+  const result = await getPool().query(
+    'SELECT * FROM msf_information ORDER BY category, cable_length_value'
+  );
+  return result.rows.map(row => mapRowToProduct(row)!);
 }
 
-export function upsertProduct(product: Partial<Product>): void {
-  const existing = getProduct(product.msf!);
+function mapRowToProduct(row: any): Product | undefined {
+  if (!row) return undefined;
+  return {
+    msf: row.msf,
+    item_name: row.item_name,
+    item_group: row.item_group,
+    category: row.category,
+    cable_type: row.cable_type,
+    cable_length: row.cable_length,
+    cable_length_value: row.cable_length_value ? parseFloat(row.cable_length_value) : null,
+    cable_length_unit: row.cable_length_unit,
+    speed: row.speed,
+    connector_type: row.connector_type,
+    location: row.location,
+    datacenter: row.datacenter,
+    metadata: row.metadata,
+    created_at: row.created_at?.toISOString() || '',
+    updated_at: row.updated_at?.toISOString() || '',
+  };
+}
+
+export async function upsertProduct(product: Partial<Product>): Promise<void> {
+  const existing = await getProduct(product.msf!);
 
   if (existing) {
-    const stmt = getDb().prepare(`
-      UPDATE products SET
-        item_name = ?,
-        item_group = ?,
-        category = COALESCE(?, category),
-        cable_type = COALESCE(?, cable_type),
-        cable_length = COALESCE(?, cable_length),
-        cable_length_value = COALESCE(?, cable_length_value),
-        cable_length_unit = COALESCE(?, cable_length_unit),
-        speed = COALESCE(?, speed),
-        connector_type = COALESCE(?, connector_type),
-        location = ?,
-        datacenter = ?,
-        updated_at = datetime('now')
-      WHERE msf = ?
-    `);
-    stmt.run(
+    await getPool().query(`
+      UPDATE msf_information SET
+        item_name = $1,
+        item_group = $2,
+        category = COALESCE($3, category),
+        cable_type = COALESCE($4, cable_type),
+        cable_length = COALESCE($5, cable_length),
+        cable_length_value = COALESCE($6, cable_length_value),
+        cable_length_unit = COALESCE($7, cable_length_unit),
+        speed = COALESCE($8, speed),
+        connector_type = COALESCE($9, connector_type),
+        location = $10,
+        datacenter = $11,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE msf = $12
+    `, [
       product.item_name,
       product.item_group || null,
       product.category || null,
@@ -222,14 +261,13 @@ export function upsertProduct(product: Partial<Product>): void {
       product.location || null,
       product.datacenter || null,
       product.msf
-    );
+    ]);
   } else {
-    const stmt = getDb().prepare(`
-      INSERT INTO products (msf, item_name, item_group, category, cable_type, cable_length,
+    await getPool().query(`
+      INSERT INTO msf_information (msf, item_name, item_group, category, cable_type, cable_length,
         cable_length_value, cable_length_unit, speed, connector_type, location, datacenter, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `, [
       product.msf,
       product.item_name,
       product.item_group || null,
@@ -243,41 +281,53 @@ export function upsertProduct(product: Partial<Product>): void {
       product.location || null,
       product.datacenter || null,
       product.metadata || null
-    );
+    ]);
   }
 }
 
-export function updateProductCategory(msf: string, category: string): void {
-  const stmt = getDb().prepare(`UPDATE products SET category = ?, updated_at = datetime('now') WHERE msf = ?`);
-  stmt.run(category, msf);
+export async function updateProductCategory(msf: string, category: string): Promise<void> {
+  await getPool().query(
+    'UPDATE msf_information SET category = $1, updated_at = CURRENT_TIMESTAMP WHERE msf = $2',
+    [category, msf]
+  );
 }
 
 // Inventory operations
-export function getLatestInventory(datacenter?: string): Array<Product & { quantity: number }> {
+export async function getLatestInventory(datacenter?: string): Promise<Array<Product & { quantity: number }>> {
+  let query: string;
+  let params: string[];
+
   if (datacenter) {
-    const stmt = getDb().prepare(`
-      SELECT p.*, COALESCE(
-        (SELECT quantity FROM inventory WHERE msf = p.msf AND datacenter = ? ORDER BY import_date DESC LIMIT 1),
+    query = `
+      SELECT m.*, COALESCE(
+        (SELECT quantity FROM dc_stock_count WHERE msf = m.msf AND datacenter = $1 ORDER BY import_date DESC LIMIT 1),
         0
       ) as quantity
-      FROM products p
-      ORDER BY p.category, p.cable_length_value
-    `);
-    return stmt.all(datacenter) as Array<Product & { quantity: number }>;
+      FROM msf_information m
+      ORDER BY m.category, m.cable_length_value
+    `;
+    params = [datacenter];
+  } else {
+    query = `
+      SELECT m.*, COALESCE(
+        (SELECT quantity FROM dc_stock_count WHERE msf = m.msf ORDER BY import_date DESC LIMIT 1),
+        0
+      ) as quantity
+      FROM msf_information m
+      ORDER BY m.category, m.cable_length_value
+    `;
+    params = [];
   }
-  const stmt = getDb().prepare(`
-    SELECT p.*, COALESCE(
-      (SELECT quantity FROM inventory WHERE msf = p.msf ORDER BY import_date DESC LIMIT 1),
-      0
-    ) as quantity
-    FROM products p
-    ORDER BY p.category, p.cable_length_value
-  `);
-  return stmt.all() as Array<Product & { quantity: number }>;
+
+  const result = await getPool().query(query, params);
+  return result.rows.map(row => ({
+    ...mapRowToProduct(row)!,
+    quantity: parseInt(row.quantity) || 0
+  }));
 }
 
-export function getInventoryByCategory(datacenter?: string): Record<string, Array<Product & { quantity: number }>> {
-  const inventory = getLatestInventory(datacenter);
+export async function getInventoryByCategory(datacenter?: string): Promise<Record<string, Array<Product & { quantity: number }>>> {
+  const inventory = await getLatestInventory(datacenter);
   const grouped: Record<string, Array<Product & { quantity: number }>> = {};
 
   for (const item of inventory) {
@@ -291,134 +341,180 @@ export function getInventoryByCategory(datacenter?: string): Record<string, Arra
   return grouped;
 }
 
-export function insertInventory(msf: string, quantity: number, sourceFile: string, datacenter: string = ''): void {
-  const timestamp = new Date().toISOString();
-  const stmt = getDb().prepare(`INSERT INTO inventory (msf, quantity, source_file, import_date, datacenter) VALUES (?, ?, ?, ?, ?)`);
-  stmt.run(msf, quantity, sourceFile, timestamp, datacenter);
+export async function insertInventory(msf: string, quantity: number, sourceFile: string, datacenter: string = ''): Promise<void> {
+  await getPool().query(
+    'INSERT INTO dc_stock_count (msf, quantity, source_file, import_date, datacenter) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)',
+    [msf, quantity, sourceFile, datacenter]
+  );
 }
 
-export function resetAllInventory(sourceFile: string, datacenter: string = ''): number {
-  const products = getAllProducts();
+export async function resetAllInventory(sourceFile: string, datacenter: string = ''): Promise<number> {
+  const products = await getAllProducts();
   let resetCount = 0;
-  const timestamp = new Date().toISOString();
-  const stmt = getDb().prepare(`INSERT INTO inventory (msf, quantity, source_file, import_date, datacenter) VALUES (?, 0, ?, ?, ?)`);
 
   for (const product of products) {
-    stmt.run(product.msf, sourceFile + ' (reset)', timestamp, datacenter);
+    await getPool().query(
+      'INSERT INTO dc_stock_count (msf, quantity, source_file, import_date, datacenter) VALUES ($1, 0, $2, CURRENT_TIMESTAMP, $3)',
+      [product.msf, sourceFile + ' (reset)', datacenter]
+    );
     resetCount++;
   }
 
   return resetCount;
 }
 
-export function getInventoryHistory(msf: string, datacenter?: string): Inventory[] {
+export async function getInventoryHistory(msf: string, datacenter?: string): Promise<Inventory[]> {
+  let result;
   if (datacenter) {
-    const stmt = getDb().prepare('SELECT * FROM inventory WHERE msf = ? AND datacenter = ? ORDER BY import_date DESC');
-    return stmt.all(msf, datacenter) as Inventory[];
+    result = await getPool().query(
+      'SELECT * FROM dc_stock_count WHERE msf = $1 AND datacenter = $2 ORDER BY import_date DESC',
+      [msf, datacenter]
+    );
+  } else {
+    result = await getPool().query(
+      'SELECT * FROM dc_stock_count WHERE msf = $1 ORDER BY import_date DESC',
+      [msf]
+    );
   }
-  const stmt = getDb().prepare('SELECT * FROM inventory WHERE msf = ? ORDER BY import_date DESC');
-  return stmt.all(msf) as Inventory[];
+  return result.rows.map(row => ({
+    id: row.id,
+    msf: row.msf,
+    quantity: row.quantity,
+    datacenter: row.datacenter,
+    import_date: row.import_date?.toISOString() || '',
+    source_file: row.source_file
+  }));
 }
 
 // Import history operations
-export function recordImport(filename: string, recordsProcessed: number, newProducts: number, updatedProducts: number): number {
-  const stmt = getDb().prepare(`
+export async function recordImport(filename: string, recordsProcessed: number, newProducts: number, updatedProducts: number): Promise<number> {
+  const result = await getPool().query(`
     INSERT INTO import_history (filename, records_processed, new_products, updated_products)
-    VALUES (?, ?, ?, ?)
-  `);
-  const result = stmt.run(filename, recordsProcessed, newProducts, updatedProducts);
-  return Number(result.lastInsertRowid);
+    VALUES ($1, $2, $3, $4)
+    RETURNING id
+  `, [filename, recordsProcessed, newProducts, updatedProducts]);
+  return result.rows[0].id;
 }
 
-export function getImportHistory(): ImportHistory[] {
-  const stmt = getDb().prepare('SELECT * FROM import_history ORDER BY import_date DESC LIMIT 50');
-  return stmt.all() as ImportHistory[];
+export async function getImportHistory(): Promise<ImportHistory[]> {
+  const result = await getPool().query('SELECT * FROM import_history ORDER BY import_date DESC LIMIT 50');
+  return result.rows.map(row => ({
+    id: row.id,
+    filename: row.filename,
+    import_date: row.import_date?.toISOString() || '',
+    records_processed: row.records_processed,
+    new_products: row.new_products,
+    updated_products: row.updated_products
+  }));
 }
 
 // Search
-export function searchProducts(query: string): Array<Product & { quantity: number }> {
+export async function searchProducts(query: string): Promise<Array<Product & { quantity: number }>> {
   const searchTerm = `%${query}%`;
-  const stmt = getDb().prepare(`
-    SELECT p.*, COALESCE(
-      (SELECT quantity FROM inventory WHERE msf = p.msf ORDER BY import_date DESC LIMIT 1),
+  const result = await getPool().query(`
+    SELECT m.*, COALESCE(
+      (SELECT quantity FROM dc_stock_count WHERE msf = m.msf ORDER BY import_date DESC LIMIT 1),
       0
     ) as quantity
-    FROM products p
-    WHERE p.msf LIKE ? OR p.item_name LIKE ? OR p.category LIKE ?
-    ORDER BY p.category, p.cable_length_value
-  `);
-  return stmt.all(searchTerm, searchTerm, searchTerm) as Array<Product & { quantity: number }>;
+    FROM msf_information m
+    WHERE m.msf ILIKE $1 OR m.item_name ILIKE $1 OR m.category ILIKE $1
+    ORDER BY m.category, m.cable_length_value
+  `, [searchTerm]);
+  return result.rows.map(row => ({
+    ...mapRowToProduct(row)!,
+    quantity: parseInt(row.quantity) || 0
+  }));
 }
 
 // Delete all data
-export function deleteAllData(): { productsDeleted: number; inventoryDeleted: number; importsDeleted: number } {
-  const productCount = (getDb().prepare('SELECT COUNT(*) as count FROM products').get() as { count: number }).count;
-  const inventoryCount = (getDb().prepare('SELECT COUNT(*) as count FROM inventory').get() as { count: number }).count;
-  const importCount = (getDb().prepare('SELECT COUNT(*) as count FROM import_history').get() as { count: number }).count;
+export async function deleteAllData(): Promise<{ productsDeleted: number; inventoryDeleted: number; importsDeleted: number }> {
+  const productCount = (await getPool().query('SELECT COUNT(*) as count FROM msf_information')).rows[0].count;
+  const inventoryCount = (await getPool().query('SELECT COUNT(*) as count FROM dc_stock_count')).rows[0].count;
+  const importCount = (await getPool().query('SELECT COUNT(*) as count FROM import_history')).rows[0].count;
 
-  getDb().exec('DELETE FROM inventory');
-  getDb().exec('DELETE FROM import_history');
-  getDb().exec('DELETE FROM products');
+  await getPool().query('DELETE FROM dc_stock_count');
+  await getPool().query('DELETE FROM import_history');
+  await getPool().query('DELETE FROM msf_information');
 
   return {
-    productsDeleted: productCount,
-    inventoryDeleted: inventoryCount,
-    importsDeleted: importCount,
+    productsDeleted: parseInt(productCount),
+    inventoryDeleted: parseInt(inventoryCount),
+    importsDeleted: parseInt(importCount),
   };
 }
 
-// MSF Configuration operations
-export function getMsfConfig(msf: string): MsfConfig | undefined {
-  const stmt = getDb().prepare('SELECT * FROM msf_config WHERE msf = ?');
-  return stmt.get(msf) as MsfConfig | undefined;
+// MSF Configuration operations (now part of msf_information table)
+export async function getMsfConfig(msf: string): Promise<MsfConfig | undefined> {
+  const result = await getPool().query(
+    'SELECT msf, short_name, category_override, notes, hidden, custom_order, created_at, updated_at FROM msf_information WHERE msf = $1',
+    [msf]
+  );
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return {
+    msf: row.msf,
+    short_name: row.short_name,
+    category_override: row.category_override,
+    notes: row.notes,
+    hidden: row.hidden ? 1 : 0,
+    custom_order: row.custom_order,
+    created_at: row.created_at?.toISOString() || '',
+    updated_at: row.updated_at?.toISOString() || ''
+  };
 }
 
-export function getAllMsfConfigs(): MsfConfig[] {
-  const stmt = getDb().prepare('SELECT * FROM msf_config ORDER BY msf');
-  return stmt.all() as MsfConfig[];
+export async function getAllMsfConfigs(): Promise<MsfConfig[]> {
+  const result = await getPool().query(
+    'SELECT msf, short_name, category_override, notes, hidden, custom_order, created_at, updated_at FROM msf_information WHERE short_name IS NOT NULL OR category_override IS NOT NULL OR notes IS NOT NULL OR hidden = true OR custom_order IS NOT NULL ORDER BY msf'
+  );
+  return result.rows.map(row => ({
+    msf: row.msf,
+    short_name: row.short_name,
+    category_override: row.category_override,
+    notes: row.notes,
+    hidden: row.hidden ? 1 : 0,
+    custom_order: row.custom_order,
+    created_at: row.created_at?.toISOString() || '',
+    updated_at: row.updated_at?.toISOString() || ''
+  }));
 }
 
-export function upsertMsfConfig(config: Partial<MsfConfig>): void {
-  const existing = getMsfConfig(config.msf!);
+export async function upsertMsfConfig(config: Partial<MsfConfig>): Promise<void> {
+  const existing = await getProduct(config.msf!);
 
   if (existing) {
-    const stmt = getDb().prepare(`
-      UPDATE msf_config SET
-        short_name = ?,
-        category_override = ?,
-        notes = ?,
-        hidden = ?,
-        custom_order = ?,
-        updated_at = datetime('now')
-      WHERE msf = ?
-    `);
-    stmt.run(
-      config.short_name ?? existing.short_name,
-      config.category_override ?? existing.category_override,
-      config.notes ?? existing.notes,
-      config.hidden ?? existing.hidden,
-      config.custom_order ?? existing.custom_order,
+    await getPool().query(`
+      UPDATE msf_information SET
+        short_name = COALESCE($1, short_name),
+        category_override = COALESCE($2, category_override),
+        notes = COALESCE($3, notes),
+        hidden = COALESCE($4, hidden),
+        custom_order = COALESCE($5, custom_order),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE msf = $6
+    `, [
+      config.short_name,
+      config.category_override,
+      config.notes,
+      config.hidden ? true : false,
+      config.custom_order,
       config.msf
-    );
-  } else {
-    const stmt = getDb().prepare(`
-      INSERT INTO msf_config (msf, short_name, category_override, notes, hidden, custom_order)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
-      config.msf,
-      config.short_name || null,
-      config.category_override || null,
-      config.notes || null,
-      config.hidden || 0,
-      config.custom_order || null
-    );
+    ]);
   }
+  // If product doesn't exist, we can't add config (MSF must exist first)
 }
 
-export function deleteMsfConfig(msf: string): void {
-  const stmt = getDb().prepare('DELETE FROM msf_config WHERE msf = ?');
-  stmt.run(msf);
+export async function deleteMsfConfig(msf: string): Promise<void> {
+  await getPool().query(`
+    UPDATE msf_information SET
+      short_name = NULL,
+      category_override = NULL,
+      notes = NULL,
+      hidden = FALSE,
+      custom_order = NULL,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE msf = $1
+  `, [msf]);
 }
 
 interface ProductWithConfigRow extends Product {
@@ -426,60 +522,39 @@ interface ProductWithConfigRow extends Product {
   config_short_name: string | null;
   config_category_override: string | null;
   config_notes: string | null;
-  config_hidden: number | null;
+  config_hidden: boolean | null;
   config_custom_order: number | null;
 }
 
-export function getProductsWithConfig(): Array<Product & { quantity: number; config: MsfConfig | null }> {
-  const stmt = getDb().prepare(`
+export async function getProductsWithConfig(): Promise<Array<Product & { quantity: number; config: MsfConfig | null }>> {
+  const result = await getPool().query(`
     SELECT
-      p.*,
+      m.*,
       COALESCE(
-        (SELECT quantity FROM inventory WHERE msf = p.msf ORDER BY import_date DESC LIMIT 1),
+        (SELECT quantity FROM dc_stock_count WHERE msf = m.msf ORDER BY import_date DESC LIMIT 1),
         0
-      ) as quantity,
-      c.short_name as config_short_name,
-      c.category_override as config_category_override,
-      c.notes as config_notes,
-      c.hidden as config_hidden,
-      c.custom_order as config_custom_order
-    FROM products p
-    LEFT JOIN msf_config c ON p.msf = c.msf
-    ORDER BY p.category, p.cable_length_value
+      ) as quantity
+    FROM msf_information m
+    ORDER BY m.category, m.cable_length_value
   `);
-  const rows = stmt.all() as ProductWithConfigRow[];
 
-  return rows.map(row => {
-    const hasConfig = row.config_short_name !== null ||
-                      row.config_category_override !== null ||
-                      row.config_notes !== null ||
-                      row.config_hidden !== null ||
-                      row.config_custom_order !== null;
+  return result.rows.map(row => {
+    const hasConfig = row.short_name !== null ||
+                      row.category_override !== null ||
+                      row.notes !== null ||
+                      row.hidden === true ||
+                      row.custom_order !== null;
 
     return {
-      msf: row.msf,
-      item_name: row.item_name,
-      item_group: row.item_group,
-      category: row.category,
-      cable_type: row.cable_type,
-      cable_length: row.cable_length,
-      cable_length_value: row.cable_length_value,
-      cable_length_unit: row.cable_length_unit,
-      speed: row.speed,
-      connector_type: row.connector_type,
-      location: row.location,
-      datacenter: row.datacenter,
-      metadata: row.metadata,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      quantity: row.quantity,
+      ...mapRowToProduct(row)!,
+      quantity: parseInt(row.quantity) || 0,
       config: hasConfig ? {
         msf: row.msf,
-        short_name: row.config_short_name,
-        category_override: row.config_category_override,
-        notes: row.config_notes,
-        hidden: row.config_hidden || 0,
-        custom_order: row.config_custom_order,
+        short_name: row.short_name,
+        category_override: row.category_override,
+        notes: row.notes,
+        hidden: row.hidden ? 1 : 0,
+        custom_order: row.custom_order,
         created_at: '',
         updated_at: '',
       } : null,
@@ -488,87 +563,141 @@ export function getProductsWithConfig(): Array<Product & { quantity: number; con
 }
 
 // Datacenter operations
-export function getAllDatacenters(): Datacenter[] {
-  const stmt = getDb().prepare('SELECT * FROM datacenters ORDER BY name');
-  return stmt.all() as Datacenter[];
+export async function getAllDatacenters(): Promise<Datacenter[]> {
+  const result = await getPool().query('SELECT * FROM datacenters ORDER BY name');
+  return result.rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    created_at: row.created_at?.toISOString() || ''
+  }));
 }
 
-export function getDatacenter(id: string): Datacenter | undefined {
-  const stmt = getDb().prepare('SELECT * FROM datacenters WHERE id = ?');
-  return stmt.get(id) as Datacenter | undefined;
+export async function getDatacenter(id: string): Promise<Datacenter | undefined> {
+  const result = await getPool().query('SELECT * FROM datacenters WHERE id = $1', [id]);
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return {
+    id: row.id,
+    name: row.name,
+    created_at: row.created_at?.toISOString() || ''
+  };
 }
 
-export function addDatacenter(id: string, name: string): void {
-  const stmt = getDb().prepare('INSERT OR REPLACE INTO datacenters (id, name) VALUES (?, ?)');
-  stmt.run(id, name);
+export async function addDatacenter(id: string, name: string): Promise<void> {
+  await getPool().query(
+    'INSERT INTO datacenters (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name = $2',
+    [id, name]
+  );
 }
 
-export function deleteDatacenter(id: string): void {
-  getDb().exec('BEGIN TRANSACTION');
+export async function deleteDatacenter(id: string): Promise<void> {
+  const client = await getPool().connect();
   try {
-    getDb().prepare('DELETE FROM inventory WHERE datacenter = ?').run(id);
-    getDb().prepare('DELETE FROM datacenters WHERE id = ?').run(id);
-    getDb().exec('COMMIT');
+    await client.query('BEGIN');
+    await client.query('DELETE FROM dc_stock_count WHERE datacenter = $1', [id]);
+    await client.query('DELETE FROM datacenters WHERE id = $1', [id]);
+    await client.query('COMMIT');
   } catch (error) {
-    getDb().exec('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 }
 
-export function updateDatacenter(id: string, name: string): void {
-  const stmt = getDb().prepare('UPDATE datacenters SET name = ? WHERE id = ?');
-  stmt.run(name, id);
+export async function updateDatacenter(id: string, name: string): Promise<void> {
+  await getPool().query('UPDATE datacenters SET name = $1 WHERE id = $2', [name, id]);
 }
 
 // Link operations
-export function getAllLinks(): Link[] {
-  const stmt = getDb().prepare('SELECT * FROM links ORDER BY starred DESC, title');
-  return stmt.all() as Link[];
+export async function getAllLinks(): Promise<Link[]> {
+  const result = await getPool().query('SELECT * FROM links ORDER BY starred DESC, title');
+  return result.rows.map(row => ({
+    id: row.id,
+    title: row.title,
+    url: row.url,
+    description: row.description,
+    starred: row.starred ? 1 : 0,
+    category: row.category,
+    created_at: row.created_at?.toISOString() || '',
+    updated_at: row.updated_at?.toISOString() || ''
+  }));
 }
 
-export function getStarredLinks(): Link[] {
-  const stmt = getDb().prepare('SELECT * FROM links WHERE starred = 1 ORDER BY title');
-  return stmt.all() as Link[];
+export async function getStarredLinks(): Promise<Link[]> {
+  const result = await getPool().query('SELECT * FROM links WHERE starred = true ORDER BY title');
+  return result.rows.map(row => ({
+    id: row.id,
+    title: row.title,
+    url: row.url,
+    description: row.description,
+    starred: row.starred ? 1 : 0,
+    category: row.category,
+    created_at: row.created_at?.toISOString() || '',
+    updated_at: row.updated_at?.toISOString() || ''
+  }));
 }
 
-export function getLink(id: number): Link | undefined {
-  const stmt = getDb().prepare('SELECT * FROM links WHERE id = ?');
-  return stmt.get(id) as Link | undefined;
+export async function getLink(id: number): Promise<Link | undefined> {
+  const result = await getPool().query('SELECT * FROM links WHERE id = $1', [id]);
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return {
+    id: row.id,
+    title: row.title,
+    url: row.url,
+    description: row.description,
+    starred: row.starred ? 1 : 0,
+    category: row.category,
+    created_at: row.created_at?.toISOString() || '',
+    updated_at: row.updated_at?.toISOString() || ''
+  };
 }
 
-export function addLink(title: string, url: string, description?: string, category?: string): number {
-  const stmt = getDb().prepare('INSERT INTO links (title, url, description, category) VALUES (?, ?, ?, ?)');
-  const result = stmt.run(title, url, description || null, category || null);
-  return Number(result.lastInsertRowid);
-}
-
-export function updateLink(id: number, title: string, url: string, description?: string, category?: string): void {
-  const stmt = getDb().prepare(
-    "UPDATE links SET title = ?, url = ?, description = ?, category = ?, updated_at = datetime('now') WHERE id = ?"
+export async function addLink(title: string, url: string, description?: string, category?: string): Promise<number> {
+  const result = await getPool().query(
+    'INSERT INTO links (title, url, description, category) VALUES ($1, $2, $3, $4) RETURNING id',
+    [title, url, description || null, category || null]
   );
-  stmt.run(title, url, description || null, category || null, id);
+  return result.rows[0].id;
 }
 
-export function toggleLinkStar(id: number): void {
-  const stmt = getDb().prepare("UPDATE links SET starred = NOT starred, updated_at = datetime('now') WHERE id = ?");
-  stmt.run(id);
+export async function updateLink(id: number, title: string, url: string, description?: string, category?: string): Promise<void> {
+  await getPool().query(
+    'UPDATE links SET title = $1, url = $2, description = $3, category = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5',
+    [title, url, description || null, category || null, id]
+  );
 }
 
-export function deleteLink(id: number): void {
-  const stmt = getDb().prepare('DELETE FROM links WHERE id = ?');
-  stmt.run(id);
+export async function toggleLinkStar(id: number): Promise<void> {
+  await getPool().query('UPDATE links SET starred = NOT starred, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+}
+
+export async function deleteLink(id: number): Promise<void> {
+  await getPool().query('DELETE FROM links WHERE id = $1', [id]);
 }
 
 // Transaction helper for imports
-export function runInTransaction<T>(fn: () => T): T {
-  const db = getDb();
-  db.exec('BEGIN TRANSACTION');
+export async function runInTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await getPool().connect();
   try {
-    const result = fn();
-    db.exec('COMMIT');
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
     return result;
   } catch (error) {
-    db.exec('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Graceful shutdown
+export async function closeDatabase(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
+    console.log('Database connection closed');
   }
 }

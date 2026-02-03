@@ -4,9 +4,9 @@ import * as db from '../services/database';
 const router = Router();
 
 // GET /api/links - Get all links
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const links = db.getAllLinks();
+    const links = await db.getAllLinks();
     res.json(links);
   } catch (error) {
     console.error('Error getting links:', error);
@@ -15,9 +15,9 @@ router.get('/', (req, res) => {
 });
 
 // GET /api/links/starred - Get starred links
-router.get('/starred', (req, res) => {
+router.get('/starred', async (req, res) => {
   try {
-    const links = db.getStarredLinks();
+    const links = await db.getStarredLinks();
     res.json(links);
   } catch (error) {
     console.error('Error getting starred links:', error);
@@ -26,13 +26,13 @@ router.get('/starred', (req, res) => {
 });
 
 // POST /api/links - Add link
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { title, url, description, category } = req.body;
     if (!title || !url) {
       return res.status(400).json({ success: false, error: 'Title and URL are required' });
     }
-    const id = db.addLink(title, url, description, category);
+    const id = await db.addLink(title, url, description, category);
     res.json({ success: true, id });
   } catch (error) {
     console.error('Error adding link:', error);
@@ -41,14 +41,14 @@ router.post('/', (req, res) => {
 });
 
 // PUT /api/links/:id - Update link
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { title, url, description, category } = req.body;
     if (!title || !url) {
       return res.status(400).json({ success: false, error: 'Title and URL are required' });
     }
-    db.updateLink(parseInt(id), title, url, description, category);
+    await db.updateLink(parseInt(id), title, url, description, category);
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating link:', error);
@@ -57,10 +57,10 @@ router.put('/:id', (req, res) => {
 });
 
 // PATCH /api/links/:id/star - Toggle link star
-router.patch('/:id/star', (req, res) => {
+router.patch('/:id/star', async (req, res) => {
   try {
     const { id } = req.params;
-    db.toggleLinkStar(parseInt(id));
+    await db.toggleLinkStar(parseInt(id));
     res.json({ success: true });
   } catch (error) {
     console.error('Error toggling link star:', error);
@@ -69,10 +69,10 @@ router.patch('/:id/star', (req, res) => {
 });
 
 // DELETE /api/links/:id - Delete link
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    db.deleteLink(parseInt(id));
+    await db.deleteLink(parseInt(id));
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting link:', error);

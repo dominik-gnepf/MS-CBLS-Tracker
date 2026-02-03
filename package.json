@@ -15,6 +15,10 @@
     "docker:run": "docker compose up -d",
     "docker:stop": "docker compose down",
     "docker:logs": "docker compose logs -f",
+    "db:start": "cd database && docker compose up -d",
+    "db:stop": "cd database && docker compose down",
+    "db:logs": "cd database && docker compose logs -f",
+    "db:reset": "cd database && docker compose down -v && docker compose up -d",
     "preview": "vite preview"
   },
   "dependencies": {

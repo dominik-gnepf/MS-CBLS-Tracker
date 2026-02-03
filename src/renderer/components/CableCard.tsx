@@ -2,6 +2,14 @@ import React from 'react';
 import { Product } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 
+// Pre-compiled regex patterns (moved to module scope to avoid recompilation on each render)
+const LENGTH_REGEX = /(\d+(?:\.\d+)?)\s*(M|FT)/i;
+const SPEED_REGEX = /(100G|200G|400G|800G)/i;
+const AOC_REGEX = /AOC/i;
+const PSM_REGEX = /PSM/i;
+const DR4_REGEX = /DR4/i;
+const COPPER_REGEX = /CAT6|COPPER/i;
+
 interface CableCardProps {
   product: Product;
   onClick: () => void;
@@ -91,21 +99,21 @@ function getShortDescription(product: Product): string {
 
   // Try to extract a meaningful short description
   // Look for patterns like "7m - 400G AOC" or "CAT6-COPPER-2FT"
-  const lengthMatch = itemName.match(/(\d+(?:\.\d+)?)\s*(M|FT)/i);
+  const lengthMatch = itemName.match(LENGTH_REGEX);
   if (lengthMatch) {
     const length = `${lengthMatch[1]}${lengthMatch[2].toUpperCase()}`;
 
     // Check for speed
-    const speedMatch = itemName.match(/(100G|200G|400G|800G)/i);
+    const speedMatch = itemName.match(SPEED_REGEX);
     if (speedMatch) {
       return `${length} - ${speedMatch[1]}`;
     }
 
     // Check for cable type
-    if (/AOC/i.test(itemName)) return `${length} - AOC`;
-    if (/PSM/i.test(itemName)) return `${length} - PSM`;
-    if (/DR4/i.test(itemName)) return `${length} - DR4`;
-    if (/CAT6|COPPER/i.test(itemName)) return `${length} - Copper`;
+    if (AOC_REGEX.test(itemName)) return `${length} - AOC`;
+    if (PSM_REGEX.test(itemName)) return `${length} - PSM`;
+    if (DR4_REGEX.test(itemName)) return `${length} - DR4`;
+    if (COPPER_REGEX.test(itemName)) return `${length} - Copper`;
 
     return length;
   }

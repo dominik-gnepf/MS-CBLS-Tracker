@@ -40,6 +40,7 @@ function AppContent() {
 
   const loadInventory = useCallback(async () => {
     setIsLoading(true);
+    setInventory({}); // Clear old inventory immediately to free memory
     try {
       const data = await window.api.getInventory(selectedDatacenter || undefined);
       setInventory(data);
@@ -127,9 +128,9 @@ function AppContent() {
     }
   };
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
-  };
+  }, []);
 
   const toggleCategory = (category: string) => {
     setVisibleCategories((prev) => {

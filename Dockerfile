@@ -25,9 +25,6 @@ FROM node:20-alpine AS backend-builder
 
 WORKDIR /app/server
 
-# Install build dependencies for better-sqlite3
-RUN apk add --no-cache python3 make g++
-
 # Copy server package files
 COPY server/package*.json ./
 
@@ -46,12 +43,9 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Install runtime dependencies for better-sqlite3
-RUN apk add --no-cache python3 make g++
-
 # Install only production dependencies for server
 COPY server/package*.json ./
-RUN npm ci --only=production && apk del python3 make g++
+RUN npm ci --only=production
 
 # Copy built backend
 COPY --from=backend-builder /app/server/dist ./dist
@@ -59,7 +53,7 @@ COPY --from=backend-builder /app/server/dist ./dist
 # Copy built frontend
 COPY --from=frontend-builder /app/dist/renderer ./public
 
-# Create data directory
+# Create data directory (for settings file)
 RUN mkdir -p /app/data
 
 # Set environment variables
@@ -67,6 +61,8 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATA_DIR=/app/data
 ENV STATIC_PATH=/app/public
+# Database URL - override this in docker-compose or when running
+ENV DATABASE_URL=postgresql://ms_tracker:ms_tracker_secret@ms-tracker-db:5432/ms_tracker_db
 
 # Expose port
 EXPOSE 3000

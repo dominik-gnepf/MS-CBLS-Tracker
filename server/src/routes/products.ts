@@ -4,10 +4,10 @@ import * as db from '../services/database';
 const router = Router();
 
 // GET /api/products - Get all products
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const datacenter = req.query.datacenter as string | undefined;
-    const products = db.getLatestInventory(datacenter);
+    const products = await db.getLatestInventory(datacenter);
     res.json(products);
   } catch (error) {
     console.error('Error getting products:', error);
@@ -16,13 +16,13 @@ router.get('/', (req, res) => {
 });
 
 // GET /api/products/search - Search products
-router.get('/search', (req, res) => {
+router.get('/search', async (req, res) => {
   try {
     const query = req.query.q as string;
     if (!query) {
       return res.json([]);
     }
-    const products = db.searchProducts(query);
+    const products = await db.searchProducts(query);
     res.json(products);
   } catch (error) {
     console.error('Error searching products:', error);
@@ -31,9 +31,9 @@ router.get('/search', (req, res) => {
 });
 
 // GET /api/products/with-config - Get products with config
-router.get('/with-config', (req, res) => {
+router.get('/with-config', async (req, res) => {
   try {
-    const products = db.getProductsWithConfig();
+    const products = await db.getProductsWithConfig();
     res.json(products);
   } catch (error) {
     console.error('Error getting products with config:', error);
@@ -42,12 +42,12 @@ router.get('/with-config', (req, res) => {
 });
 
 // GET /api/products/:msf - Get product details
-router.get('/:msf', (req, res) => {
+router.get('/:msf', async (req, res) => {
   try {
     const { msf } = req.params;
     const datacenter = req.query.datacenter as string | undefined;
-    const product = db.getProduct(msf);
-    const history = db.getInventoryHistory(msf, datacenter);
+    const product = await db.getProduct(msf);
+    const history = await db.getInventoryHistory(msf, datacenter);
     res.json({ product: product || null, history });
   } catch (error) {
     console.error('Error getting product details:', error);
@@ -56,14 +56,14 @@ router.get('/:msf', (req, res) => {
 });
 
 // PATCH /api/products/:msf/category - Update product category
-router.patch('/:msf/category', (req, res) => {
+router.patch('/:msf/category', async (req, res) => {
   try {
     const { msf } = req.params;
     const { category } = req.body;
     if (!category) {
       return res.status(400).json({ success: false, error: 'Category is required' });
     }
-    db.updateProductCategory(msf, category);
+    await db.updateProductCategory(msf, category);
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating category:', error);

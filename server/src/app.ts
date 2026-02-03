@@ -33,9 +33,9 @@ app.use('/api/links', linksRoutes);
 app.use('/api/msf-configs', msfConfigRoutes);
 
 // DELETE /api/data - Delete all data
-app.delete('/api/data', (req, res) => {
+app.delete('/api/data', async (req, res) => {
   try {
-    const result = db.deleteAllData();
+    const result = await db.deleteAllData();
     console.log(`Deleted all data: ${result.productsDeleted} products, ${result.inventoryDeleted} inventory records, ${result.importsDeleted} import records`);
     res.json({ success: true, ...result });
   } catch (error) {

@@ -16,7 +16,9 @@
       "Bash(npx tsc:*)",
       "Bash(git -C \"C:\\\\Users\\\\dognepf\\\\DEV\\\\MS Cable Tracker\\\\MS-CBLS-Tracker\" status)",
       "Bash(docker:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(dir:*)",
+      "Bash(npm run db:reset:*)"
     ]
   }
 }
